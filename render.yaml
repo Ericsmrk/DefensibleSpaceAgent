@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: clearsafe-agent
+    env: python
+    plan: free
+    buildCommand: pip install -r requirements.txt && pip install gunicorn
+    startCommand: gunicorn web_app:app --bind 0.0.0.0:$PORT
+    healthCheckPath: /healthz
+    envVars:
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: GOOGLE_MAPS_KEY
+        sync: false
