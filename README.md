@@ -29,6 +29,22 @@ Open: `http://localhost:8000`
 
 Without keys, the project runs in deterministic mock mode for instructor reproducibility.
 
+
+## GitHub Pages (temporary frontend)
+You can publish `index.html` as a temporary public frontend right now.
+
+1. Push this repo to GitHub (branch `work` or `main`).
+2. In GitHub: **Settings -> Pages**
+3. Under **Build and deployment**, choose:
+   - Source: **Deploy from a branch**
+   - Branch: `work` (or `main`)
+   - Folder: `/ (root)`
+4. Save and wait for the Pages URL to appear.
+
+Notes:
+- On GitHub Pages, the app runs in **frontend-only mock mode** unless you provide an API Base URL in the page UI.
+- If you have the Flask backend deployed (Render/Railway/etc.), paste that URL into the API Base field to run live assessments.
+
 ## Deploy to your domain (e.g., clearsafe.org)
 1. Push this repo to GitHub.
 2. Create a web service on Render (or Railway/Fly) using:

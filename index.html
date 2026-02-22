@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>ClearSafe — GitHub Pages Demo</title>
+  <style>
+    body { font-family: Arial, sans-serif; max-width: 900px; margin: 2rem auto; padding: 0 1rem; }
+    h1 { margin-bottom: .25rem; }
+    .sub { color: #666; margin-top: 0; }
+    .grid { display: grid; gap: .75rem; }
+    textarea, input { width: 100%; font-size: 1rem; padding: .5rem; }
+    button { padding: .6rem 1rem; cursor: pointer; }
+    .card { border: 1px solid #ddd; border-radius: 8px; padding: 1rem; margin-top: 1rem; }
+    .muted { color: #666; font-size: .95rem; }
+    pre { background: #f6f6f6; padding: .75rem; overflow-x: auto; }
+  </style>
+</head>
+<body>
+  <h1>ClearSafe</h1>
+  <p class="sub">Wildfire defensible-space assessment (GitHub Pages frontend)</p>
+
+  <div class="card grid">
+    <label for="apiBase"><b>API Base URL (optional)</b></label>
+    <input id="apiBase" placeholder="https://your-render-app.onrender.com" />
+    <p class="muted">Leave blank to run frontend-only mock mode on GitHub Pages.</p>
+
+    <label for="prompt"><b>Assessment Request</b></label>
+    <textarea id="prompt" placeholder="Assess wildfire risk for 17825 Woodcrest Dr, Pioneer, Ca"></textarea>
+
+    <button id="run">Run Assessment</button>
+  </div>
+
+  <div id="result" class="card" style="display:none;"></div>
+
+  <script>
+    const resultEl = document.getElementById('result');
+
+    function render(data, mode) {
+      const ex = data.execution || {};
+      resultEl.style.display = 'block';
+      resultEl.innerHTML = `
+        <p><b>Mode:</b> ${mode}</p>
+        <p><b>Address:</b> ${ex.address || 'n/a'}</p>
+        <p><b>NDVI:</b> ${ex.mean_ndvi ?? 'n/a'}</p>
+        <p><b>Fuel Class:</b> ${ex.fuel_class || 'n/a'}</p>
+        <p><b>Recommendation:</b> ${data.final_response || 'n/a'}</p>
+        <details>
+          <summary>Structured JSON</summary>
+          <pre>${JSON.stringify(data, null, 2)}</pre>
+        </details>
+      `;
+    }
+
+    function mockAssessment(prompt) {
+      return {
+        execution: {
+          address: prompt,
+          mean_ndvi: 0.52,
+          fuel_class: 'Moderate Vegetation'
+        },
+        final_response: 'Mock mode: prioritize clearing dead vegetation close to structures and reducing ladder fuels.',
+      };
+    }
+
+    document.getElementById('run').addEventListener('click', async () => {
+      const prompt = document.getElementById('prompt').value.trim();
+      const apiBase = document.getElementById('apiBase').value.trim().replace(/\/$/, '');
+
+      if (!prompt) {
+        alert('Please enter a request.');
+        return;
+      }
+
+      resultEl.style.display = 'block';
+      resultEl.innerHTML = '<p class="muted">Running assessment...</p>';
+
+      if (!apiBase) {
+        render(mockAssessment(prompt), 'Frontend-only mock (GitHub Pages)');
+        return;
+      }
+
+      try {
+        const response = await fetch(`${apiBase}/api/assess`, {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({ request: prompt })
+        });
+
+        if (!response.ok) throw new Error('API returned non-200 response');
+        const data = await response.json();
+        render(data, `Live API (${apiBase})`);
+      } catch (err) {
+        resultEl.innerHTML = `<p><b>Request failed.</b> ${err.message}</p><p class="muted">Tip: leave API Base URL empty to use mock mode on Pages.</p>`;
+      }
+    });
+  </script>
+</body>
+</html>
