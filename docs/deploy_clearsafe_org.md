@@ -23,6 +23,12 @@ In Render dashboard, add:
 
 Without them, app still runs using deterministic fallback logic.
 
+
+## Key management (important)
+- Never commit real keys to GitHub.
+- Set `OPENAI_API_KEY` and `GOOGLE_MAPS_KEY` only in your hosting provider environment-variable settings.
+- If using GitHub Pages as frontend, keep all key usage on backend only (`/api/assess`), not in browser JS.
+
 ## 3) Add custom domain
 In Render service settings:
 - Add custom domain `clearsafe.org`
