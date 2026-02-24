@@ -45,6 +45,14 @@ Notes:
 - On GitHub Pages, the app runs in **frontend-only mock mode** unless you provide an API Base URL in the page UI.
 - If you have the Flask backend deployed (Render/Railway/etc.), paste that URL into the API Base field to run live assessments.
 
+
+## Keys and secrets (required for live online mode)
+Do **not** hardcode or commit keys into this repository.
+
+- Local development: copy `.env.example` to `.env` and set values there.
+- Hosted backend (Render/Railway/Fly): set `OPENAI_API_KEY` and `GOOGLE_MAPS_KEY` in the provider dashboard environment variables.
+- GitHub Pages is static-only: never put API keys in `index.html`/JavaScript because they become public. Use Pages as frontend and call your hosted backend API instead.
+
 ## Deploy to your domain (e.g., clearsafe.org)
 1. Push this repo to GitHub.
 2. Create a web service on Render (or Railway/Fly) using:
