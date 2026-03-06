@@ -1,7 +1,7 @@
+from __future__ import annotations
+
 from dotenv import load_dotenv
 load_dotenv()
-
-from __future__ import annotations
 
 from flask import Flask, jsonify, render_template_string, request
 
