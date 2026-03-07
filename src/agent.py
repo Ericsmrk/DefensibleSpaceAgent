@@ -43,12 +43,28 @@ def _fallback_validation() -> Dict[str, Any]:
     return {"passed": True, "reasons": ["fallback validator accepted request"]}
 
 
-def run_agent(user_request: str, model: str = "gpt-4o-mini") -> Dict[str, Any]:
+def run_planner_only(prompt: str, model: str = "gpt-4o-mini") -> Dict[str, Any]:
+    """Run only the planner step with the given prompt; returns plan JSON."""
+    client = LLMClient(model=model)
+    user_message = (prompt or "").strip() or "Create a plan for a defensible-space assessment."
+    return client.chat_json(
+        PLANNER_SYSTEM,
+        user_message,
+        fallback=_fallback_plan(prompt or ""),
+    )
+
+
+def run_agent(
+    user_request: str,
+    model: str = "gpt-4o-mini",
+    planner_prompt: str | None = None,
+) -> Dict[str, Any]:
     client = LLMClient(model=model)
 
+    planner_user = (planner_prompt or "").strip() or f"Create a plan for: {user_request}"
     plan = client.chat_json(
         PLANNER_SYSTEM,
-        f"Create a plan for: {user_request}",
+        planner_user,
         fallback=_fallback_plan(user_request),
     )
     plan_ok, plan_reasons = validate_plan(plan)

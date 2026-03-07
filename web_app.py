@@ -6,9 +6,16 @@ load_dotenv()
 from flask import Flask, jsonify, render_template_string, request, Response
 
 from src.agent import run_agent
+from src.llm_client import LLMClient
 from src.tools import geocode_google
 
 app = Flask(__name__)
+
+# Prompt sent to the OpenAI LLM during the planner step (Run planner button).
+PLANNER_PROMPT = (
+    'This is a test prompt. print the words "test prompt successfull" and a smiley face.'
+)
+PLANNER_SYSTEM_FOR_TEST = "You are a helpful assistant. Do exactly what the user asks."
 
 INDEX_HTML = """
 <!doctype html>
@@ -41,6 +48,9 @@ INDEX_HTML = """
     <br />
     <button id="geocode">Get lat/long</button>
     <div id="geocode-out" class="card" style="display:none;"></div>
+    <p class="muted" style="margin: 1rem 0 .5rem 0;">Run the planner (OpenAI) using the address above.</p>
+    <button id="run-plan">Run planner</button>
+    <div id="plan-out" class="card" style="display:none;"></div>
   </section>
 
   <h2 style="margin-top: 2rem;">What should we assess?</h2>
@@ -52,6 +62,11 @@ INDEX_HTML = """
   <div id="out" class="card" style="display:none;"></div>
 
   <script>
+    function escapeHtml(s) {
+      const div = document.createElement('div');
+      div.textContent = s;
+      return div.innerHTML;
+    }
     const out = document.getElementById('out');
     const geocodeOut = document.getElementById('geocode-out');
 
@@ -84,6 +99,32 @@ INDEX_HTML = """
       } else {
         geocodeOut.innerHTML = '<p>Could not find coordinates for this address.</p>';
       }
+    };
+
+    document.getElementById('run-plan').onclick = async () => {
+      const address = document.getElementById('address').value.trim();
+      if (!address) return alert('Please enter an address first.');
+
+      const planOut = document.getElementById('plan-out');
+      planOut.style.display = 'block';
+      planOut.innerHTML = '<p class="muted">Running planner...</p>';
+
+      const r = await fetch('/api/plan', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({address: address})
+      });
+
+      const data = await r.json();
+      if (!r.ok) {
+        planOut.innerHTML = '<p>Error: ' + (data.error || 'Planner failed') + '</p>';
+        return;
+      }
+      const plan = data.plan || {};
+      const responseText = plan.response;
+      planOut.innerHTML = responseText != null
+        ? `<h3>Planner response</h3><p>${escapeHtml(responseText)}</p><details><summary>JSON</summary><pre>${JSON.stringify(data.plan, null, 2)}</pre></details>`
+        : `<h3>Plan</h3><pre>${JSON.stringify(data.plan, null, 2)}</pre>`;
     };
 
     document.getElementById('run').onclick = async () => {
@@ -148,13 +189,33 @@ def geocode():
         return jsonify({"error": str(e)}), 500
 
 
+@app.post("/api/plan")
+def plan():
+    """Run the planner step with the configured prompt (OpenAI). Uses address from request for UI flow."""
+    payload = request.get_json(silent=True) or {}
+    address = (payload.get("address") or "").strip()
+    if not address:
+        return jsonify({"error": "address is required"}), 400
+    try:
+        client = LLMClient()
+        if not client.is_configured():
+            return jsonify({"error": "OPENAI_API_KEY not set"}), 503
+        response = client.chat_text(
+            PLANNER_SYSTEM_FOR_TEST,
+            PLANNER_PROMPT,
+            fallback="test prompt successfull :)",
+        )
+        return jsonify({"plan": {"response": response}})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 @app.post("/api/assess")
 def assess():
     payload = request.get_json(silent=True) or {}
     user_request = (payload.get("request") or "").strip()
     if not user_request:
         return jsonify({"error": "request is required"}), 400
-
     result = run_agent(user_request)
     return jsonify(result)
 
