@@ -234,6 +234,11 @@ INDEX_HTML = """
     addressInput.addEventListener('input', syncButtonState);
     addressInput.addEventListener('focus', syncButtonState);
 
+    // Prevent form submit on Enter in the address field (would POST to "/" and get 405).
+    document.getElementById('property-form').addEventListener('submit', function(e) {
+      e.preventDefault();
+    });
+
     var map = null;
     var marker = null;
     var fallbackCircle = null;
