@@ -3,9 +3,10 @@ from __future__ import annotations
 from dotenv import load_dotenv
 load_dotenv()
 
-from flask import Flask, jsonify, render_template_string, request
+from flask import Flask, jsonify, render_template_string, request, Response
 
 from src.agent import run_agent
+from src.tools import geocode_google
 
 app = Flask(__name__)
 
@@ -23,6 +24,7 @@ INDEX_HTML = """
     textarea { width: 100%; min-height: 90px; font-size: 1rem; }
     button { margin-top: .7rem; padding: .6rem 1rem; cursor: pointer; }
     .card { margin-top: 1rem; padding: 1rem; border: 1px solid #ddd; border-radius: 8px; }
+    .geocode-section { background: #f0f8ff; border: 1px solid #b8d4e8; border-radius: 8px; padding: 1.25rem; margin-top: 1rem; }
     .muted { color: #666; }
     pre { background: #f6f6f6; padding: .8rem; overflow-x: auto; }
   </style>
@@ -31,6 +33,17 @@ INDEX_HTML = """
   <h1>ClearSafe</h1>
   <p class="sub">Wildfire defensible-space assistant</p>
 
+  <section class="geocode-section" aria-label="Geocode address to coordinates">
+    <h2 style="margin-top: 0;">Get coordinates from address</h2>
+    <p class="muted" style="margin: .5rem 0;">Enter an address to get latitude and longitude (geocoding).</p>
+    <label for="address">Address</label>
+    <input type="text" id="address" placeholder="e.g. 17825 Woodcrest Dr, Pioneer, CA" style="width: 100%; padding: .5rem; font-size: 1rem; margin-top: .3rem; box-sizing: border-box;" />
+    <br />
+    <button id="geocode">Get lat/long</button>
+    <div id="geocode-out" class="card" style="display:none;"></div>
+  </section>
+
+  <h2 style="margin-top: 2rem;">What should we assess?</h2>
   <label for="prompt">What should we assess?</label>
   <textarea id="prompt" placeholder="Assess wildfire risk for 17825 Woodcrest Dr, Pioneer, Ca"></textarea>
   <br />
@@ -40,6 +53,39 @@ INDEX_HTML = """
 
   <script>
     const out = document.getElementById('out');
+    const geocodeOut = document.getElementById('geocode-out');
+
+    document.getElementById('geocode').onclick = async () => {
+      const address = document.getElementById('address').value.trim();
+      if (!address) return alert('Please enter an address.');
+
+      geocodeOut.style.display = 'block';
+      geocodeOut.innerHTML = '<p class="muted">Geocoding...</p>';
+
+      const r = await fetch('/api/geocode', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({address: address})
+      });
+
+      const data = await r.json();
+      if (!r.ok) {
+        geocodeOut.innerHTML = '<p>Error: ' + (data.error || 'Geocoding failed') + '</p>';
+        return;
+      }
+
+      if (data.lat != null && data.lon != null) {
+        geocodeOut.innerHTML = `
+          <h3>Coordinates</h3>
+          <p><b>Latitude:</b> ${data.lat}</p>
+          <p><b>Longitude:</b> ${data.lon}</p>
+          <p class="muted">Source: ${data.source || 'n/a'}</p>
+        `;
+      } else {
+        geocodeOut.innerHTML = '<p>Could not find coordinates for this address.</p>';
+      }
+    };
+
     document.getElementById('run').onclick = async () => {
       const prompt = document.getElementById('prompt').value.trim();
       if (!prompt) return alert('Please enter a request.');
@@ -80,7 +126,26 @@ INDEX_HTML = """
 
 @app.get("/")
 def home():
-    return render_template_string(INDEX_HTML)
+    html = render_template_string(INDEX_HTML)
+    resp = Response(html)
+    resp.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    resp.headers["Pragma"] = "no-cache"
+    return resp
+
+
+@app.post("/api/geocode")
+def geocode():
+    payload = request.get_json(silent=True) or {}
+    address = (payload.get("address") or "").strip()
+    if not address:
+        return jsonify({"error": "address is required"}), 400
+    try:
+        lat, lon, meta = geocode_google(address)
+        if lat is None or lon is None:
+            return jsonify({"error": meta.get("status", "Geocoding failed")}), 400
+        return jsonify({"lat": lat, "lon": lon, "source": meta.get("source", "unknown")})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 
 @app.post("/api/assess")
@@ -97,6 +162,12 @@ def assess():
 @app.get("/healthz")
 def healthz():
     return jsonify({"ok": True})
+
+
+@app.get("/version")
+def version():
+    """Returns a version marker so you can confirm the server is running new code."""
+    return jsonify({"version": "with-geocode", "has_geocode_ui": True})
 
 
 if __name__ == "__main__":
