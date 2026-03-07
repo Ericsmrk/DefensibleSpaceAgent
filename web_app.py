@@ -13,10 +13,60 @@ from src.tools import geocode_google
 app = Flask(__name__)
 
 # Prompt sent to the OpenAI LLM during the planner step (Run planner button).
-PLANNER_PROMPT = (
-    'This is a test prompt. print the words "test prompt successfull" and a smiley face.'
+# Use {address} in the string to inject the selected property address.
+PLANNER_SYSTEM = (
+    'You are the "Baseline Fire Danger Planner" for a California wildfire risk assessment system.'
 )
-PLANNER_SYSTEM_FOR_TEST = "You are a helpful assistant. Do exactly what the user asks."
+PLANNER_PROMPT = (
+    "Your task is to generate a short preliminary wildfire risk baseline using ONLY the provided address.\n\n"
+    "Address: {address}\n\n"
+    "This is the FIRST step of a multi-step workflow. Your output must only describe the GENERAL environmental "
+    "wildfire exposure for this location. Do NOT perform property-level analysis.\n\n"
+    "At this stage you must:\n"
+    "- Use the address only\n"
+    "- Provide a brief regional wildfire risk baseline\n"
+    "- Focus on California-specific wildfire context\n"
+    "- Avoid assumptions about the structure, defensible space, or mitigation efforts\n"
+    "- Avoid asking the user for data in this step\n\n"
+    "Later workflow steps will collect:\n"
+    "• property photos\n"
+    "• vegetation information\n"
+    "• NDVI measurements\n"
+    "• defensible space observations\n\n"
+    "Your job here is ONLY to produce a short baseline overview.\n\n"
+    "Base the baseline on California-relevant wildfire context such as:\n"
+    "• CAL FIRE Fire Hazard Severity Zone patterns\n"
+    "• regional wildfire history\n"
+    "• typical vegetation and fuel types\n"
+    "• terrain and slope context\n"
+    "• drought and seasonal dryness\n"
+    "• wildland-urban interface exposure\n"
+    "• common California wildfire spread conditions\n\n"
+    "If exact data is unavailable, provide a cautious regional baseline using general knowledge of "
+    "wildfire-prone California landscapes.\n\n"
+    "OUTPUT FORMAT (follow exactly):\n\n"
+    "Baseline Fire Danger Overview\n\n"
+    "Address:\n"
+    "{address}\n\n"
+    "Preliminary Baseline:\n"
+    "[2–4 sentences describing the general wildfire exposure for the location based on regional California "
+    "wildfire conditions.]\n\n"
+    "Likely Baseline Drivers:\n"
+    "- [driver]\n"
+    "- [driver]\n"
+    "- [driver]\n\n"
+    "Important Note:\n"
+    "This baseline is generated from address-level location context only. A more accurate property-level "
+    "wildfire assessment will occur in the next step after the user provides site photos and additional data "
+    "for vegetation and NDVI analysis.\n\n"
+    "Style rules:\n"
+    "• Keep response concise\n"
+    "• Do not provide mitigation advice\n"
+    "• Do not calculate NDVI\n"
+    "• Do not mention later steps except in the Important Note\n"
+    "• Do not fabricate precise measurements\n"
+    "• Frame all conclusions as preliminary"
+)
 
 # Google Maps API key: set GOOGLE_MAPS_KEY in .env; use placeholder if not set so UI still loads.
 GOOGLE_MAPS_API_KEY = os.getenv("GOOGLE_MAPS_KEY") or "YOUR_GOOGLE_MAPS_API_KEY"
@@ -174,6 +224,15 @@ INDEX_HTML = """
     <textarea id="prompt" placeholder="e.g. Focus on vegetation within 30 ft of structures"></textarea>
     <br />
     <button type="button" id="run" class="btn btn-primary">Run Assessment (manual)</button>
+  </section>
+
+  <section class="card" style="margin-top: 1.5rem;">
+    <h2 class="card-title">Quick joke</h2>
+    <div class="search-wrap">
+      <input type="text" id="joke-input" class="search-input" placeholder="Give me a word to joke about!" aria-label="Joke topic" />
+    </div>
+    <button type="button" id="joke-btn" class="btn btn-primary" style="margin-top: 0.75rem;">Submit</button>
+    <div id="joke-out" class="card" style="display:none; margin-top: 1rem; padding: 1rem;"></div>
   </section>
 
   <div id="out" class="card" style="display:none; margin-top: 1.5rem;"></div>
@@ -369,6 +428,24 @@ INDEX_HTML = """
         : '<h3>Plan</h3><pre>' + escapeHtml(JSON.stringify(data.plan, null, 2)) + '</pre>';
     };
 
+    document.getElementById('joke-btn').addEventListener('click', async function() {
+      var jokeOut = document.getElementById('joke-out');
+      jokeOut.style.display = 'block';
+      jokeOut.innerHTML = '<p class="muted">Getting a joke...</p>';
+      var word = document.getElementById('joke-input').value.trim();
+      var r = await fetch('/api/joke', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ word: word })
+      });
+      var data = await r.json();
+      if (!r.ok) {
+        jokeOut.innerHTML = '<p class="muted">Error: ' + escapeHtml(data.error || 'Could not get joke') + '</p>';
+        return;
+      }
+      jokeOut.innerHTML = '<p style="margin:0; white-space: pre-wrap;">' + escapeHtml(data.joke || '') + '</p>';
+    });
+
     document.getElementById('run').onclick = async function() {
       var prompt = document.getElementById('prompt').value.trim();
       if (!prompt) prompt = 'Assess wildfire risk for the selected property.';
@@ -434,21 +511,45 @@ def geocode():
 
 @app.post("/api/plan")
 def plan():
-    """Run the planner step with the configured prompt (OpenAI). Uses address from request for UI flow."""
+    """Run the planner step with the built-in prompt (OpenAI). Injects the selected address into the prompt."""
     payload = request.get_json(silent=True) or {}
     address = (payload.get("address") or "").strip()
     if not address:
         return jsonify({"error": "address is required"}), 400
+    prompt_text = PLANNER_PROMPT.format(address=address)
     try:
         client = LLMClient()
         if not client.is_configured():
             return jsonify({"error": "OPENAI_API_KEY not set"}), 503
         response = client.chat_text(
-            PLANNER_SYSTEM_FOR_TEST,
-            PLANNER_PROMPT,
-            fallback="test prompt successfull :)",
+            PLANNER_SYSTEM,
+            prompt_text,
+            fallback="Planner could not produce a response.",
         )
         return jsonify({"plan": {"response": response}})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+JOKE_SYSTEM = "You tell short, clean, family-friendly jokes. Reply with only the joke text, no preamble or labels."
+
+
+@app.post("/api/joke")
+def joke():
+    """Return a small random clean joke from OpenAI, optionally about the given word."""
+    payload = request.get_json(silent=True) or {}
+    word = (payload.get("word") or "").strip()
+    user_prompt = f"Tell me a joke about {word}." if word else "Tell me one random small clean joke."
+    try:
+        client = LLMClient()
+        if not client.is_configured():
+            return jsonify({"error": "OPENAI_API_KEY not set"}), 503
+        response = client.chat_text(
+            JOKE_SYSTEM,
+            user_prompt,
+            fallback="Why did the scarecrow win an award? He was outstanding in his field!",
+        )
+        return jsonify({"joke": response.strip()})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
