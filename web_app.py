@@ -15,57 +15,90 @@ app = Flask(__name__)
 # Prompt sent to the OpenAI LLM during the planner step (Run planner button).
 # Use {address} in the string to inject the selected property address.
 PLANNER_SYSTEM = (
-    'You are the "Baseline Fire Danger Planner" for a California wildfire risk assessment system.'
+    'You are the "Baseline Fire Danger Planner" for a California wildfire risk assessment system. '
+    'You are the first-stage planning agent in a structured multi-step workflow.'
 )
+
 PLANNER_PROMPT = (
-    "Your task is to generate a short preliminary wildfire risk baseline using ONLY the provided address.\n\n"
+    "Your task is to produce a HYBRID planner response for the property address below.\n\n"
     "Address: {address}\n\n"
-    "This is the FIRST step of a multi-step workflow. Your output must only describe the GENERAL environmental "
-    "wildfire exposure for this location. Do NOT perform property-level analysis.\n\n"
-    "At this stage you must:\n"
-    "- Use the address only\n"
-    "- Provide a brief regional wildfire risk baseline\n"
-    "- Focus on California-specific wildfire context\n"
-    "- Avoid assumptions about the structure, defensible space, or mitigation efforts\n"
-    "- Avoid asking the user for data in this step\n\n"
-    "Later workflow steps will collect:\n"
-    "• property photos\n"
-    "• vegetation information\n"
-    "• NDVI measurements\n"
-    "• defensible space observations\n\n"
-    "Your job here is ONLY to produce a short baseline overview.\n\n"
-    "Base the baseline on California-relevant wildfire context such as:\n"
-    "• CAL FIRE Fire Hazard Severity Zone patterns\n"
-    "• regional wildfire history\n"
-    "• typical vegetation and fuel types\n"
-    "• terrain and slope context\n"
-    "• drought and seasonal dryness\n"
-    "• wildland-urban interface exposure\n"
-    "• common California wildfire spread conditions\n\n"
-    "If exact data is unavailable, provide a cautious regional baseline using general knowledge of "
-    "wildfire-prone California landscapes.\n\n"
+    "This is the FIRST step of a structured wildfire assessment workflow. "
+    "At this stage, you must do three things:\n"
+    "1. Briefly define the current assessment scope\n"
+    "2. Provide a short preliminary baseline wildfire overview based ONLY on address-level context\n"
+    "3. List all possible next steps and prompt the user to issue a request (choose what to do next)\n\n"
+    "Important boundaries:\n"
+    "- Use ONLY the provided address\n"
+    "- Do NOT perform property-level analysis\n"
+    "- Do NOT assume anything about the home, structures, defensible space, clearance work, or mitigation status\n"
+    "- Do NOT fabricate exact measurements, hazard designations, or parcel-specific facts unless they are directly known\n"
+    "- Do NOT provide mitigation advice in this step\n"
+    "- Do NOT ask the user for data or clarification; you MAY invite them to issue a request (choose next steps)\n\n"
+    "This stage should reflect California-specific wildfire context only, such as:\n"
+    "- broad regional wildfire exposure\n"
+    "- common vegetation and fuel conditions\n"
+    "- terrain and slope context\n"
+    "- drought and seasonal dryness\n"
+    "- wildland-urban interface exposure\n"
+    "- common California fire spread conditions\n"
+    "- general CAL FIRE / California wildfire context when appropriate\n\n"
+    "Later workflow steps may collect or analyze:\n"
+    "- property photos\n"
+    "- property coordinates and parcel context\n"
+    "- Fire Hazard Severity Zone classification\n"
+    "- vegetation and fuel type information\n"
+    "- NDVI and vegetation density measurements\n"
+    "- slope, aspect, and elevation\n"
+    "- distance to dense vegetation or forest edge\n"
+    "- recent wildfire perimeter proximity\n"
+    "- nearby structure density and ember exposure context\n"
+    "- aerial-imagery defensible-space indicators\n"
+    "- road access and emergency response context\n"
+    "- additional property-level evidence\n\n"
+    "If exact data is unavailable, provide a cautious, clearly preliminary baseline based on regional California wildfire context.\n\n"
     "OUTPUT FORMAT (follow exactly):\n\n"
-    "Baseline Fire Danger Overview\n\n"
-    "Address:\n"
-    "{address}\n\n"
-    "Preliminary Baseline:\n"
-    "[2–4 sentences describing the general wildfire exposure for the location based on regional California "
-    "wildfire conditions.]\n\n"
+    "Planner Response\n\n"
+    "Assessment Mode:\n"
+    "Address-level wildfire baseline\n\n"
+    "Current Confidence:\n"
+    "Preliminary only\n\n"
+    "Purpose of This Step:\n"
+    "[1-2 sentences explaining that this step provides a general California wildfire baseline using address-level "
+    "location context only, and that it is not a full property-level assessment.]\n\n"
+    "Initial Baseline Summary:\n"
+    "[2-4 sentences describing the general wildfire exposure for the location based only on regional California "
+    "wildfire conditions. Keep the wording cautious and preliminary.]\n\n"
     "Likely Baseline Drivers:\n"
     "- [driver]\n"
     "- [driver]\n"
     "- [driver]\n\n"
-    "Important Note:\n"
-    "This baseline is generated from address-level location context only. A more accurate property-level "
-    "wildfire assessment will occur in the next step after the user provides site photos and additional data "
-    "for vegetation and NDVI analysis.\n\n"
+    "Important Limitation:\n"
+    "This result is based only on address-level context and does not yet include property-level analysis or photos, "
+    "structure-specific observations, or other property-level evidence.\n\n"
+    "Possible Next Steps To Be Done and Included in the Assessment (list each so the user can choose):\n"
+    "1. Collect property coordinates and parcel context\n"
+    "2. Analyze Fire Hazard Severity Zone classification\n"
+    "3. Assess vegetation and fuel type information\n"
+    "4. Analyze NDVI and vegetation density measurements\n"
+    "5. Assess slope, aspect, and elevation\n"
+    "6. Evaluate distance to dense vegetation or forest edge\n"
+    "7. Review recent wildfire perimeter proximity\n"
+    "8. Assess nearby structure density and ember exposure context\n"
+    "9. Review aerial-imagery defensible-space indicators\n"
+    "10. Evaluate road access and emergency response context\n"
+    "11. Input and then analyze property photos (with a prompt to input the photos) \n"
+    "12. Incorporate additional property-level evidence\n\n"
+    "Prompt the user:\n"
+    "[1-2 sentences inviting the user to issue a request: tell them they can choose one or more of the possible next "
+    "steps above, or describe another assessment need, and that their request will guide the next step.]\n\n"
     "Style rules:\n"
-    "• Keep response concise\n"
-    "• Do not provide mitigation advice\n"
-    "• Do not calculate NDVI\n"
-    "• Do not mention later steps except in the Important Note\n"
-    "• Do not fabricate precise measurements\n"
-    "• Frame all conclusions as preliminary"
+    "- Keep the full response concise\n"
+    "- Sound professional and structured\n"
+    "- Make the planning role explicit\n"
+    "- Make all conclusions preliminary\n"
+    "- Do not provide defensible-space recommendations yet\n"
+    "- Do not mention tool names unless naturally necessary\n"
+    "- Do not output JSON\n"
 )
 
 # Google Maps API key: set GOOGLE_MAPS_KEY in .env; use placeholder if not set so UI still loads.
@@ -77,7 +110,7 @@ INDEX_HTML = """
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>ClearSafe — Defensible Space Assessment</title>
+  <title>ClearSafe - Defensible Space Assessment</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
@@ -190,6 +223,17 @@ INDEX_HTML = """
     }
     pre { background: var(--bg); padding: 1rem; border-radius: 8px; overflow-x: auto; font-size: 0.85rem; border: 1px solid var(--border); }
     .hidden-fields { display: none; }
+    .planner-response {
+      white-space: pre-wrap;
+      line-height: 1.6;
+      font-size: 0.95rem;
+      margin: 0.75rem 0;
+      padding: 1rem;
+      background: var(--bg);
+      border-radius: 8px;
+      border: 1px solid var(--border);
+    }
+    .planner-response strong { color: var(--accent); font-weight: 600; }
   </style>
 </head>
 <body>
@@ -237,12 +281,27 @@ INDEX_HTML = """
 
   <div id="out" class="card" style="display:none; margin-top: 1.5rem;"></div>
 
-  <script src="https://maps.googleapis.com/maps/api/js?key={{ google_maps_api_key }}&libraries=places&callback=initMap" async defer></script>
   <script>
     function escapeHtml(s) {
       const div = document.createElement('div');
       div.textContent = s;
       return div.innerHTML;
+    }
+    function formatPlannerResponse(text) {
+      try {
+        var s = (text != null && typeof text === 'string') ? text : String(text || '');
+        var lines = s.split('\\n');
+        return lines.map(function(line) {
+          var escaped = escapeHtml(line);
+          var t = line.trim();
+          var isHeader = t.length > 0 && t.length < 60 && t.endsWith(':');
+          var isNumbered = t.length > 2 && t.charAt(0) >= '1' && t.charAt(0) <= '9' && t.charAt(1) === '.';
+          if (isHeader || isNumbered) return '<strong>' + escaped + '</strong>';
+          return escaped;
+        }).join('<br>');
+      } catch (e) {
+        return escapeHtml(String(text || ''));
+      }
     }
     const out = document.getElementById('out');
     const addressInput = document.getElementById('address');
@@ -302,7 +361,7 @@ INDEX_HTML = """
     var marker = null;
     var fallbackCircle = null;
 
-    function initMap() {
+    window.initMap = function initMap() {
       var defaultCenter = { lat: 39.0, lng: -98.0 };
       map = new google.maps.Map(document.getElementById('map'), {
         center: defaultCenter,
@@ -362,7 +421,7 @@ INDEX_HTML = """
           strokeWeight: 2
         });
       });
-    }
+    };
 
     document.getElementById('analyze-btn').addEventListener('click', async function() {
       var addr = hiddenAddress.value.trim();
@@ -423,9 +482,13 @@ INDEX_HTML = """
       }
       var plan = data.plan || {};
       var responseText = plan.response;
-      planOut.innerHTML = responseText != null
-        ? '<h3>Planner response</h3><p>' + escapeHtml(responseText) + '</p><details><summary>JSON</summary><pre>' + escapeHtml(JSON.stringify(data.plan, null, 2)) + '</pre></details>'
-        : '<h3>Plan</h3><pre>' + escapeHtml(JSON.stringify(data.plan, null, 2)) + '</pre>';
+      try {
+        planOut.innerHTML = responseText != null
+          ? '<h3>Planner response</h3><div class="planner-response">' + formatPlannerResponse(responseText) + '</div><details><summary>JSON</summary><pre>' + escapeHtml(JSON.stringify(data.plan, null, 2)) + '</pre></details>'
+          : '<h3>Plan</h3><pre>' + escapeHtml(JSON.stringify(data.plan, null, 2)) + '</pre>';
+      } catch (err) {
+        planOut.innerHTML = '<h3>Planner response</h3><div class="planner-response">' + escapeHtml(String(responseText != null ? responseText : '')) + '</div><details><summary>JSON</summary><pre>' + escapeHtml(JSON.stringify(data.plan, null, 2)) + '</pre></details>';
+      }
     };
 
     document.getElementById('joke-btn').addEventListener('click', async function() {
@@ -479,6 +542,16 @@ INDEX_HTML = """
         '<p><b>Recommendation:</b> ' + escapeHtml(data.final_response || '') + '</p>' +
         '<details><summary>Structured JSON</summary><pre>' + escapeHtml(JSON.stringify(data, null, 2)) + '</pre></details>';
     };
+
+    (function loadMaps() {
+      var key = {{ google_maps_api_key|tojson }};
+      if (!key || key === 'YOUR_GOOGLE_MAPS_API_KEY') return;
+      var s = document.createElement('script');
+      s.async = true;
+      s.defer = true;
+      s.src = 'https://maps.googleapis.com/maps/api/js?key=' + encodeURIComponent(key) + '&libraries=places&callback=initMap';
+      document.head.appendChild(s);
+    })();
   </script>
 </body>
 </html>
