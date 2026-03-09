@@ -325,6 +325,60 @@ INDEX_HTML = """
       font-size: 0.85rem;
       color: var(--text-muted);
     }
+    .plan-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 0.9rem;
+      margin-top: 0.35rem;
+    }
+    .plan-card {
+      background: var(--bg);
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      padding: 0.85rem 0.95rem;
+    }
+    .plan-title {
+      font-size: 0.85rem;
+      font-weight: 600;
+      margin: 0 0 0.25rem 0;
+    }
+    .plan-distance {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      margin-bottom: 0.25rem;
+    }
+    .plan-objective {
+      font-size: 0.85rem;
+      color: var(--text);
+      margin: 0 0 0.35rem 0;
+    }
+    .plan-list {
+      padding-left: 1.1rem;
+      margin: 0 0 0.35rem 0;
+    }
+    .plan-list li {
+      font-size: 0.85rem;
+      margin: 0.15rem 0;
+      color: var(--text);
+    }
+    .plan-meta {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      margin-top: 0.2rem;
+    }
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      padding: 0.1rem 0.5rem;
+      border-radius: 999px;
+      font-size: 0.7rem;
+      font-weight: 600;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      border: 1px solid var(--border);
+      color: var(--text-muted);
+      margin-top: 0.15rem;
+    }
   </style>
 </head>
 <body>
@@ -584,7 +638,7 @@ INDEX_HTML = """
 
       var tierRaw = ex.tier || (data.plan && data.plan.request_type) || '';
       var tierLabel = 'Assessment';
-      if (tierRaw === 'full_paid_tier') tierLabel = 'Full assessment';
+      if (tierRaw === 'full_paid_tier') tierLabel = 'FULL ASSESSMENT';
       else if (tierRaw === 'baseline_free_tier') tierLabel = 'Baseline overview';
 
       var validation = data.validation || {};
@@ -625,6 +679,8 @@ INDEX_HTML = """
       var resultTitle = 'Assessment result';
       if (isBaselineTier && baselineReport && baselineReport.report_title) {
         resultTitle = baselineReport.report_title;
+      } else if (!isBaselineTier && tierRaw === 'full_paid_tier') {
+        resultTitle = 'Full Wildfire Assessment';
       }
 
       var headerHtml =
@@ -670,6 +726,9 @@ INDEX_HTML = """
         bodyHtml += sectionBlock('Regional vegetation context', 'regional_vegetation_context');
         bodyHtml += sectionBlock('Limitations', 'limitations');
       } else {
+        var slopeSummary = (ex.property_slope && ex.property_slope.summary) || 'Not available';
+        var proxSummary = (ex.vegetation_proximity && ex.vegetation_proximity.summary) || 'Not available';
+
         var metricsHtml =
           '<div class="result-grid">' +
             '<div class="metric-card">' +
@@ -681,6 +740,16 @@ INDEX_HTML = """
               '<div class="metric-label">Fuel class</div>' +
               '<div class="metric-value">' + escapeHtml(fuel) + '</div>' +
               '<div class="metric-caption">' + fuelCaption + '</div>' +
+            '</div>' +
+            '<div class="metric-card">' +
+              '<div class="metric-label">Slope / terrain</div>' +
+              '<div class="metric-value">' + (slopeSummary !== 'Not available' ? 'Available' : 'Not available') + '</div>' +
+              '<div class="metric-caption">' + escapeHtml(String(slopeSummary)) + '</div>' +
+            '</div>' +
+            '<div class="metric-card">' +
+              '<div class="metric-label">Vegetation proximity</div>' +
+              '<div class="metric-value">' + (proxSummary !== 'Not available' ? 'Available' : 'Not available') + '</div>' +
+              '<div class="metric-caption">' + escapeHtml(String(proxSummary)) + '</div>' +
             '</div>' +
           '</div>';
 
@@ -696,14 +765,163 @@ INDEX_HTML = """
             '</div>';
         }
 
-        var actionsHtml =
-          '<div class="result-section">' +
-            '<h4 class="result-section-title">Top actions and interpretation</h4>' +
-            '<p class="result-text">' + mainText + '</p>' +
-            '<p class="result-subtext">These recommendations are based on California-focused wildfire defensible-space guidance and the evidence listed below.</p>' +
-          '</div>';
+        var rec = ex.calfire_recommendations || null;
+        var recSummary = '';
+        var priority = null;
+        var zones = null;
+        var homeFollow = null;
+        var maintFollow = null;
+        var reasoning = null;
+        var limits = null;
 
-        bodyHtml = metricsHtml + ndviMapHtml + actionsHtml + contextHtml;
+        if (rec && typeof rec === 'object' && !Array.isArray(rec)) {
+          recSummary = rec.recommendation_summary || '';
+          priority = rec.priority_bands || null;
+          zones = Array.isArray(rec.zone_plan) ? rec.zone_plan : null;
+          homeFollow = Array.isArray(rec.home_hardening_followups) ? rec.home_hardening_followups : null;
+          maintFollow = Array.isArray(rec.maintenance_followups) ? rec.maintenance_followups : null;
+          reasoning = Array.isArray(rec.reasoning_trace) ? rec.reasoning_trace : null;
+          limits = Array.isArray(rec.limitations) ? rec.limitations : null;
+        }
+
+        var summaryHtml = '';
+        if (recSummary) {
+          summaryHtml =
+            '<div class="result-section">' +
+              '<h4 class="result-section-title">Summary</h4>' +
+              '<p class="result-text">' + escapeHtml(String(recSummary)) + '</p>' +
+            '</div>';
+        }
+
+        var priorityHtml = '';
+        if (priority) {
+          function renderBand(label, key) {
+            var items = priority[key] || [];
+            if (!items || !items.length) return '';
+            var lis = items.map(function(it) {
+              return '<li>' + escapeHtml(String(it)) + '</li>';
+            }).join('');
+            return (
+              '<div class="plan-card">' +
+                '<div class="plan-title">' + escapeHtml(label) + '</div>' +
+                '<ul class="plan-list">' + lis + '</ul>' +
+              '</div>'
+            );
+          }
+          priorityHtml =
+            '<div class="result-section">' +
+              '<h4 class="result-section-title">Prioritized homeowner action bands</h4>' +
+              '<div class="plan-grid">' +
+                renderBand('Immediate focus', 'immediate') +
+                renderBand('Near-term projects', 'near_term') +
+                renderBand('Seasonal / ongoing', 'seasonal_ongoing') +
+              '</div>' +
+            '</div>';
+        }
+
+        var zoneHtml = '';
+        if (zones && zones.length) {
+          var cards = zones.map(function(z) {
+            var title = (z.zone || '') + (z.distance ? ' · ' + z.distance : '');
+            var objective = z.objective || '';
+            var acts = Array.isArray(z.recommended_actions) ? z.recommended_actions : [];
+            var why = z.why_it_matters || '';
+            var urgency = z.urgency || '';
+            var evidence = Array.isArray(z.evidence_basis) ? z.evidence_basis : [];
+            var scope = z.scope_note || '';
+            var actsHtml = acts.map(function(a) {
+              return '<li>' + escapeHtml(String(a)) + '</li>';
+            }).join('');
+            var evHtml = evidence.length
+              ? '<div class="plan-meta"><strong>Evidence basis:</strong> ' + escapeHtml(evidence.join('; ')) + '</div>'
+              : '';
+            return (
+              '<div class="plan-card">' +
+                '<div class="plan-title">' + escapeHtml(String(title)) + '</div>' +
+                (objective ? '<p class="plan-objective">' + escapeHtml(String(objective)) + '</p>' : '') +
+                (actsHtml ? '<ul class="plan-list">' + actsHtml + '</ul>' : '') +
+                (why ? '<div class="plan-meta"><strong>Why it matters:</strong> ' + escapeHtml(String(why)) + '</div>' : '') +
+                (urgency ? '<div class="chip">' + escapeHtml(String(urgency)) + '</div>' : '') +
+                evHtml +
+                (scope ? '<div class="plan-meta">' + escapeHtml(String(scope)) + '</div>' : '') +
+              '</div>'
+            );
+          }).join('');
+          zoneHtml =
+            '<div class="result-section">' +
+              '<h4 class="result-section-title">Prioritized homeowner action plan by zone</h4>' +
+              '<div class="plan-grid">' + cards + '</div>' +
+            '</div>';
+        }
+
+        var homeHtml = '';
+        if (homeFollow && homeFollow.length) {
+          var items = homeFollow.map(function(h) {
+            return (
+              '<li><strong>' + escapeHtml(String(h.title || '')) + ':</strong> ' +
+                escapeHtml(String(h.detail || '')) +
+              '</li>'
+            );
+          }).join('');
+          homeHtml =
+            '<div class="result-section">' +
+              '<h4 class="result-section-title">Home hardening follow-ups</h4>' +
+              '<ul class="plan-list">' + items + '</ul>' +
+            '</div>';
+        }
+
+        var maintHtml = '';
+        if (maintFollow && maintFollow.length) {
+          var mItems = maintFollow.map(function(m) {
+            return (
+              '<li><strong>' + escapeHtml(String(m.title || '')) + ':</strong> ' +
+                escapeHtml(String(m.detail || '')) +
+              '</li>'
+            );
+          }).join('');
+          maintHtml =
+            '<div class="result-section">' +
+              '<h4 class="result-section-title">Maintenance and monitoring</h4>' +
+              '<ul class="plan-list">' + mItems + '</ul>' +
+            '</div>';
+        }
+
+        var reasoningHtml = '';
+        if (reasoning && reasoning.length) {
+          var rItems = reasoning.map(function(rtxt) {
+            return '<li>' + escapeHtml(String(rtxt)) + '</li>';
+          }).join('');
+          reasoningHtml =
+            '<div class="result-section">' +
+              '<h4 class="result-section-title">How this plan used the evidence</h4>' +
+              '<ul class="plan-list">' + rItems + '</ul>' +
+            '</div>';
+        }
+
+        var limitsHtml = '';
+        if (limits && limits.length) {
+          var lItems = limits.map(function(ltxt) {
+            return '<li>' + escapeHtml(String(ltxt)) + '</li>';
+          }).join('');
+          limitsHtml =
+            '<div class="result-section">' +
+              '<h4 class="result-section-title">Limitations</h4>' +
+              '<ul class="plan-list">' + lItems + '</ul>' +
+            '</div>';
+        }
+
+        // Fallback: if structured recommendations missing, fall back to legacy narrative.
+        var legacyHtml = '';
+        if (!rec || Array.isArray(rec)) {
+          legacyHtml =
+            '<div class="result-section">' +
+              '<h4 class="result-section-title">Top actions and interpretation</h4>' +
+              '<p class="result-text">' + mainText + '</p>' +
+              '<p class="result-subtext">These recommendations are based on California-focused wildfire defensible-space guidance and the evidence listed below.</p>' +
+            '</div>';
+        }
+
+        bodyHtml = summaryHtml + metricsHtml + ndviMapHtml + priorityHtml + zoneHtml + homeHtml + maintHtml + reasoningHtml + limitsHtml + contextHtml + legacyHtml;
       }
 
       var debugHtml =

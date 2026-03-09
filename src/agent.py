@@ -2,13 +2,20 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from .baseline_executor import execute_baseline_workflow
 from .llm_client import LLMClient
 
 logger = logging.getLogger(__name__)
-from .prompts import EXECUTION_SYSTEM, GENERATOR_SYSTEM, PLANNER_PROMPT, PLANNER_SYSTEM, VALIDATOR_SYSTEM
+from .prompts import (
+    CALFIRE_RECOMMENDATION_SYSTEM,
+    EXECUTION_SYSTEM,
+    GENERATOR_SYSTEM,
+    PLANNER_PROMPT,
+    PLANNER_SYSTEM,
+    VALIDATOR_SYSTEM,
+)
 from .tools import classify_fuel, compute_mean_ndvi, geocode_google
 from .validators import normalize_plan, validate_coordinates, validate_plan, validate_tool_args
 
@@ -318,6 +325,293 @@ def _fallback_tool_args(
 
 def _fallback_validation() -> Dict[str, Any]:
     return {"passed": True, "reasons": ["fallback validator accepted request"]}
+
+
+def _strip_markdown_like(text: str) -> str:
+    """Remove common markdown artifacts (e.g., headings, bullets, code fences) from LLM text."""
+    if not isinstance(text, str):
+        return ""
+    s = text.strip()
+    # Remove leading code fences and headings/bullets
+    for prefix in ("```", "### ", "## ", "# ", "- ", "* "):
+        while s.startswith(prefix):
+            s = s[len(prefix) :].lstrip()
+    # Strip trailing code fences if present
+    if s.endswith("```"):
+        s = s[: -3].rstrip()
+    return s
+
+
+def _safe_str(val: Any, default: str = "") -> str:
+    if not isinstance(val, str):
+        val = str(val) if val is not None else ""
+    val = _strip_markdown_like(val)
+    return val if val else default
+
+
+def _safe_str_list(val: Any, min_len: int = 0, max_len: Optional[int] = None) -> List[str]:
+    items: List[str] = []
+    if isinstance(val, list):
+        for x in val:
+            if isinstance(x, str) or x is not None:
+                s = _strip_markdown_like(str(x))
+                if s:
+                    items.append(s)
+    if max_len is not None and len(items) > max_len:
+        items = items[:max_len]
+    if len(items) < min_len:
+        # Caller can decide whether to replace with fallback
+        return items
+    return items
+
+
+def _fallback_recommendation(execution: Dict[str, Any]) -> Dict[str, Any]:
+    """Deterministic, CAL FIRE–aligned fallback recommendation object used when LLM output is unusable."""
+    ndvi = execution.get("mean_ndvi")
+    fuel_class = execution.get("fuel_class") or "Unknown"
+    veg_prox = execution.get("vegetation_proximity") or {}
+    terrain = execution.get("terrain_context") or {}
+    hazard = execution.get("hazard_context") or {}
+
+    ndvi_phrase = "a noticeable vegetation signal" if isinstance(ndvi, (int, float)) else "available vegetation signals"
+    fuel_phrase = f"a fuel interpretation of '{fuel_class}'" if fuel_class and fuel_class != "Unknown" else "coarse fuel interpretations"
+    prox_phrase = "vegetation proximity context" if veg_prox else "general proximity patterns"
+    terrain_phrase = "terrain considerations" if terrain else "basic terrain principles"
+    hazard_phrase = "regional wildfire hazard context" if hazard else "general California wildfire patterns"
+
+    summary = (
+        "This California property-focused wildfire mitigation plan highlights defensible-space priorities around the home "
+        "using remote vegetation signals, fuel interpretation, simple terrain context, and nearby vegetation patterns. "
+        "Recommendations are aligned with official California defensible-space and home-hardening concepts and are meant "
+        "to support homeowner planning, not to confirm code compliance or inspection results. All actions should be "
+        "reviewed and verified on site."
+    )
+
+    zone_plan = [
+        {
+            "zone": "Zone 0",
+            "distance": "0–5 ft",
+            "objective": "Create the most ember-resistant area immediately next to the home and attached structures.",
+            "recommended_actions": [
+                "Regularly remove leaves, needles, bark, and other combustible debris from the first few feet next to the home, decks, stairs, and attachments.",
+                "Avoid storing firewood, lumber, mulch piles, or other combustible items directly against exterior walls or under decks where embers can land.",
+                "Replace or relocate highly combustible decorative items right next to the structure where practical.",
+            ],
+            "why_it_matters": "The first five feet nearest the home are critical for reducing ember ignition potential and direct flame contact on siding, decks, and attachments.",
+            "urgency": "Immediate",
+            "evidence_basis": [
+                hazard_phrase,
+                fuel_phrase,
+                "CAL FIRE Zone 0 defensible-space concept",
+            ],
+            "scope_note": "Guidance in this zone is informational and does not verify official Zone 0 or defensible-space compliance. Conditions and clearances must be checked in person.",
+        },
+        {
+            "zone": "Zone 1",
+            "distance": "5–30 ft",
+            "objective": "Reduce vegetation continuity and ladder-fuel pathways near the home while keeping selected plants maintained.",
+            "recommended_actions": [
+                "Thin and separate shrubs and small trees so they do not form continuous flame paths toward windows, vents, or eaves.",
+                "Remove or reduce dead branches, leaves, and dense understory growth beneath shrubs and trees.",
+                "Maintain vertical separation between surface fuels and lower tree branches to reduce ladder-fuel conditions.",
+            ],
+            "why_it_matters": "Managing vegetation in this zone can reduce the chance that surface fire or shrubs deliver flames directly to the home or into tree crowns.",
+            "urgency": "Near-term",
+            "evidence_basis": [
+                ndvi_phrase,
+                fuel_phrase,
+                prox_phrase,
+                "CAL FIRE Zones 1–2 defensible-space concepts",
+            ],
+            "scope_note": "Spacing and pruning needs depend on the specific plants, structures, and terrain on site. Satellite signals cannot confirm exact clearance distances; verify details in person.",
+        },
+        {
+            "zone": "Zone 2",
+            "distance": "30–100 ft",
+            "objective": "Reduce broader fuel continuity and approaching fire intensity where that area is under the owner’s control and local rules allow work.",
+            "recommended_actions": [
+                "Where practical and lawful, reduce dense, continuous vegetation and heavy accumulations of dead material within the outer defensible-space area.",
+                "Manage grasses and surface fuels so they do not form tall, continuous beds leading toward the home.",
+                "Consider selective thinning or separation of shrubs and small trees to interrupt long, connected fuel pathways.",
+            ],
+            "why_it_matters": "Managing fuels farther from the home can lower fire intensity and ember production before fire reaches the near-home zones.",
+            "urgency": "Seasonal/Ongoing",
+            "evidence_basis": [
+                hazard_phrase,
+                terrain_phrase,
+                "Regional vegetation and fuel context",
+            ],
+            "scope_note": "Work in this zone depends on site layout, slopes, ownership boundaries, and applicable local rules. Always comply with local requirements and verify conditions on the ground.",
+        },
+    ]
+
+    rec = {
+        "recommendation_summary": summary,
+        "priority_bands": {
+            "immediate": [
+                "Reduce combustible materials and debris within the first 0–5 feet of the home.",
+                "Address obvious vegetation and item continuity that could carry embers or flames directly to the structure.",
+            ],
+            "near_term": [
+                "Thin and separate shrubs and lower branches in the 5–30 foot area.",
+                "Reduce ladder fuels that could move fire from the ground into trees or structures.",
+            ],
+            "seasonal_ongoing": [
+                "Maintain grass height and remove dead vegetation before and during fire season.",
+                "Re-check near-home areas for new debris or vegetation regrowth after storms or each season.",
+            ],
+        },
+        "zone_plan": zone_plan,
+        "home_hardening_followups": [
+            {
+                "title": "Check ember-vulnerable features",
+                "detail": "Review roofs, gutters, vents, eaves, decks, fences, and under-deck areas for places where embers and debris can accumulate and ignite.",
+            },
+            {
+                "title": "Evaluate attachments and transitions",
+                "detail": "Look at fences, gates, stairs, and other attachments that connect directly to the structure and reduce or separate combustible materials where feasible.",
+            },
+        ],
+        "maintenance_followups": [
+            {
+                "title": "Seasonal vegetation maintenance",
+                "detail": "Before and during fire season, remove dead material, manage grasses, and re-check spacing of key plants near the home.",
+            },
+            {
+                "title": "Post-storm and post-wind cleanup",
+                "detail": "After storms or strong winds, clear new leaves, needles, and branches from roofs, gutters, decks, and near-structure areas.",
+            },
+        ],
+        "reasoning_trace": [
+            "Vegetation and fuel signals informed emphasis on reducing fuel continuity near the home.",
+            "Proximity of potential fuels to the structure informed focus on ember-resistant Zone 0 and Zone 1 actions.",
+            "General terrain and regional wildfire context informed attention to broader fuel continuity and seasonal maintenance.",
+        ],
+        "limitations": [
+            "This is a California-focused informational planning output, not an official inspection.",
+            "It does not determine legal compliance, code-enforcement status, or insurance eligibility.",
+            "Recommendations are based on remote and structured signals and must be verified on site.",
+            "Local requirements, ownership boundaries, and professional judgment should guide any work.",
+        ],
+    }
+    return rec
+
+
+def _normalize_recommendation(raw: Any, fallback: Dict[str, Any]) -> Dict[str, Any]:
+    """Coerce an arbitrary LLM object into the required recommendation schema, falling back when necessary."""
+    if not isinstance(raw, dict):
+        return fallback
+
+    def _zone_key(z: str) -> str:
+        z = (z or "").strip()
+        if z.startswith("Zone 0"):
+            return "Zone 0"
+        if z.startswith("Zone 1"):
+            return "Zone 1"
+        if z.startswith("Zone 2"):
+            return "Zone 2"
+        return ""
+
+    # Base from fallback so all required keys exist.
+    out = json.loads(json.dumps(fallback))
+
+    out["recommendation_summary"] = _safe_str(
+        raw.get("recommendation_summary"),
+        default=fallback.get("recommendation_summary", ""),
+    )
+
+    pb_raw = raw.get("priority_bands") or {}
+    if isinstance(pb_raw, dict):
+        for band in ("immediate", "near_term", "seasonal_ongoing"):
+            items = _safe_str_list(pb_raw.get(band), max_len=5)
+            if items:
+                out["priority_bands"][band] = items
+
+    # Zone plan: require exactly Zone 0/1/2. Prefer LLM content when usable, otherwise fallback zones.
+    zones_by_key: Dict[str, Dict[str, Any]] = {}
+    zp_raw = raw.get("zone_plan") or []
+    if isinstance(zp_raw, list):
+        for item in zp_raw:
+            if not isinstance(item, dict):
+                continue
+            key = _zone_key(item.get("zone", ""))
+            if not key or key in zones_by_key:
+                continue
+            zones_by_key[key] = item
+
+    normalized_zones: List[Dict[str, Any]] = []
+    for fb_zone in fallback.get("zone_plan", []):
+        key = fb_zone.get("zone")
+        candidate = zones_by_key.get(key, {})
+        merged: Dict[str, Any] = {}
+        merged["zone"] = key
+        merged["distance"] = _safe_str(
+            candidate.get("distance"),
+            default=_safe_str(fb_zone.get("distance", "")),
+        )
+        merged["objective"] = _safe_str(
+            candidate.get("objective"),
+            default=_safe_str(fb_zone.get("objective", "")),
+        )
+        recs = _safe_str_list(candidate.get("recommended_actions"), max_len=6)
+        if not recs:
+            recs = _safe_str_list(fb_zone.get("recommended_actions"), max_len=6)
+        merged["recommended_actions"] = recs
+        merged["why_it_matters"] = _safe_str(
+            candidate.get("why_it_matters"),
+            default=_safe_str(fb_zone.get("why_it_matters", "")),
+        )
+        urgency = _safe_str(candidate.get("urgency"), default=_safe_str(fb_zone.get("urgency", "")))
+        if urgency not in ("Immediate", "Near-term", "Seasonal/Ongoing"):
+            urgency = _safe_str(fb_zone.get("urgency", ""))
+        merged["urgency"] = urgency or "Near-term"
+        ev = _safe_str_list(candidate.get("evidence_basis"), max_len=5)
+        if not ev:
+            ev = _safe_str_list(fb_zone.get("evidence_basis"), max_len=5)
+        merged["evidence_basis"] = ev
+        merged["scope_note"] = _safe_str(
+            candidate.get("scope_note"),
+            default=_safe_str(fb_zone.get("scope_note", "")),
+        )
+        normalized_zones.append(merged)
+    if len(normalized_zones) == 3:
+        out["zone_plan"] = normalized_zones
+
+    hh_raw = raw.get("home_hardening_followups") or []
+    home_items: List[Dict[str, Any]] = []
+    if isinstance(hh_raw, list):
+        for item in hh_raw:
+            if not isinstance(item, dict):
+                continue
+            title = _safe_str(item.get("title"))
+            detail = _safe_str(item.get("detail"))
+            if title and detail:
+                home_items.append({"title": title, "detail": detail})
+    if 2 <= len(home_items) <= 5:
+        out["home_hardening_followups"] = home_items
+
+    maint_raw = raw.get("maintenance_followups") or []
+    maint_items: List[Dict[str, Any]] = []
+    if isinstance(maint_raw, list):
+        for item in maint_raw:
+            if not isinstance(item, dict):
+                continue
+            title = _safe_str(item.get("title"))
+            detail = _safe_str(item.get("detail"))
+            if title and detail:
+                maint_items.append({"title": title, "detail": detail})
+    if 2 <= len(maint_items) <= 5:
+        out["maintenance_followups"] = maint_items
+
+    rt_raw = _safe_str_list(raw.get("reasoning_trace"), max_len=6)
+    if 3 <= len(rt_raw) <= 6:
+        out["reasoning_trace"] = rt_raw
+
+    lim_raw = _safe_str_list(raw.get("limitations"), max_len=6)
+    if 3 <= len(lim_raw) <= 6:
+        out["limitations"] = lim_raw
+
+    return out
 
 
 def run_planner_only(prompt: str, model: str = "gpt-4o-mini") -> Dict[str, Any]:
@@ -664,11 +958,57 @@ def run_agent(
             execution["photo_analysis"] = {"summary": "Photo analysis placeholder (image analysis not wired in this build).", "photo_count": photo_count}
 
         elif tool == "generate_calfire_aligned_recommendations":
-            execution["calfire_recommendations"] = [
-                "Maintain an ember-resistant zone within 0–5 feet of structures (reduce combustibles adjacent to buildings).",
-                "Reduce and separate vegetation in the 5–30 foot zone to limit ladder fuels and flame contact.",
-                "Manage vegetation and surface fuels in the 30–100 foot zone to reduce spread potential and ember generation.",
-            ]
+            # Dedicated CAL FIRE–aligned recommendation LLM step (structured JSON only).
+            rec_input = {
+                "address": execution.get("address"),
+                "california_validation": {
+                    "in_california": True,
+                    "method": "coarse_bounding_box",
+                },
+                "hazard_context": execution.get("hazard_context"),
+                "terrain_context": execution.get("terrain_context"),
+                "ndvi": execution.get("mean_ndvi"),
+                "fuel_class": execution.get("fuel_class"),
+                "slope_analysis": execution.get("property_slope"),
+                "vegetation_proximity": execution.get("vegetation_proximity"),
+                "regional_vegetation_context": execution.get("regional_vegetation_context"),
+                "photo_analysis": execution.get("photo_analysis"),
+                "plan_metadata": {
+                    "tier": plan.get("request_type"),
+                    "analysis_modules": plan.get("analysis_modules"),
+                },
+            }
+            fallback_rec = _fallback_recommendation(execution)
+            if not client.is_configured():
+                execution["calfire_recommendations"] = fallback_rec
+            else:
+                user_payload = json.dumps(rec_input, default=str, indent=2)
+                # First attempt
+                first = client.chat_json(
+                    CALFIRE_RECOMMENDATION_SYSTEM,
+                    user_payload,
+                    fallback=fallback_rec,
+                )
+                rec = _normalize_recommendation(first, fallback=fallback_rec)
+                # If the normalized result still looks like the untouched fallback and the raw was clearly not a dict,
+                # attempt a single repair call.
+                if not isinstance(first, dict):
+                    repair_prompt = json.dumps(
+                        {
+                            "input": rec_input,
+                            "previous_output": first,
+                            "instruction": "Repair the previous output to exactly match the required JSON schema. Return only the corrected JSON object.",
+                        },
+                        default=str,
+                        indent=2,
+                    )
+                    second = client.chat_json(
+                        CALFIRE_RECOMMENDATION_SYSTEM,
+                        repair_prompt,
+                        fallback=fallback_rec,
+                    )
+                    rec = _normalize_recommendation(second, fallback=fallback_rec)
+                execution["calfire_recommendations"] = rec
 
         elif tool == "generate_baseline_report":
             execution["report"] = {
