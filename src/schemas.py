@@ -86,6 +86,78 @@ class ExecutionSpec:
         }
 
 
+@dataclass
+class ToolResult:
+    """Standardized tool output schema used by the Baseline executor."""
+
+    tool_name: str
+    success: bool
+    data: Dict[str, Any]
+    sources: List[str] = field(default_factory=list)
+    limitations: List[str] = field(default_factory=list)
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "tool_name": self.tool_name,
+            "success": self.success,
+            "data": self.data,
+            "sources": self.sources,
+            "limitations": self.limitations,
+        }
+
+
+@dataclass
+class FinalBaselineReport:
+    """Structured representation of the synthesized Baseline report."""
+
+    tier: str
+    text: str
+    sections: Dict[str, str] = field(default_factory=dict)
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "tier": self.tier,
+            "text": self.text,
+            "sections": self.sections,
+        }
+
+
+@dataclass
+class BaselineToolContext:
+    """
+    Shared context object passed into Baseline tools.
+
+    Tools may read and update this as the executor runs through the plan.
+    """
+
+    address: Optional[str]
+    lat: Optional[float]
+    lng: Optional[float]
+    plan: Dict[str, Any]
+    execution_spec: ExecutionSpec
+    constraints: Dict[str, Any] = field(default_factory=dict)
+    step_outputs: Dict[int, ToolResult] = field(default_factory=dict)
+    location_metadata: Dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class BaselineOrchestratorResult:
+    """High-level result object returned by the Baseline executor/orchestrator."""
+
+    status: str
+    plan: Dict[str, Any]
+    step_outputs: Dict[int, ToolResult]
+    final_report: Optional[FinalBaselineReport] = None
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "status": self.status,
+            "plan": self.plan,
+            "step_outputs": {str(k): v.to_dict() for k, v in self.step_outputs.items()},
+            "final_report": self.final_report.to_dict() if self.final_report else None,
+        }
+
+
 # --- Legacy / shared (kept for compatibility) ---
 
 @dataclass

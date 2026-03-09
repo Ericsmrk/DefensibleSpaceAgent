@@ -28,8 +28,29 @@ def geocode_google(address: str) -> Tuple[Optional[float], Optional[float], dict
     if data.get("status") != "OK" or not data.get("results"):
         return None, None, {"status": data.get("status", "UNKNOWN"), "source": "google"}
 
-    loc = data["results"][0]["geometry"]["location"]
-    return float(loc["lat"]), float(loc["lng"]), {"status": "OK", "source": "google"}
+    result = data["results"][0]
+    loc = result["geometry"]["location"]
+
+    meta: dict = {"status": "OK", "source": "google"}
+    meta["formatted_address"] = result.get("formatted_address")
+
+    # Extract lightweight administrative context (state, county, city) when available.
+    components = result.get("address_components") or []
+    for comp in components:
+        types = comp.get("types") or []
+        long_name = comp.get("long_name")
+        short_name = comp.get("short_name")
+        if "administrative_area_level_1" in types:
+            meta["state"] = long_name
+            meta["state_code"] = short_name
+        elif "administrative_area_level_2" in types:
+            meta["county"] = long_name
+        elif "locality" in types or "postal_town" in types or "sublocality" in types:
+            # Use the first reasonable city/locality-like component we find.
+            if "city" not in meta:
+                meta["city"] = long_name
+
+    return float(loc["lat"]), float(loc["lng"]), meta
 
 
 def compute_mean_ndvi(

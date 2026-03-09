@@ -4,6 +4,7 @@ import json
 import logging
 from typing import Any, Dict, Optional
 
+from .baseline_executor import execute_baseline_workflow
 from .llm_client import LLMClient
 
 logger = logging.getLogger(__name__)
@@ -366,8 +367,14 @@ def run_agent(
     planner_prompt: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
-    Pipeline: planner (execution spec) -> validate plan -> [if execution_ready] generator -> validate args
-    -> validator LLM -> executor -> reporter.
+    Pipeline:
+      - Planner LLM produces an execution spec (JSON).
+      - Plan is normalized and validated.
+      - Tool arguments are derived and validated.
+      - For Baseline (Free Tier): a rule-based executor/orchestrator runs tools via TOOL_REGISTRY,
+        then a separate synthesis LLM call generates the Baseline report.
+      - For Full (Paid Tier): the legacy executor and reporter pipeline is used.
+
     When address/lat/lng are provided (e.g. from Google Places UI), planner and executor use them;
     geocoding is skipped when valid coordinates are provided.
     """
@@ -451,7 +458,58 @@ def run_agent(
             tool_args = _fallback_tool_args(user_request, plan, address=address)
     args_ok, args_reasons = validate_tool_args(tool_args, plan=plan)
 
-    # 3. Validator LLM
+    # Special-case Baseline (Free Tier): no validator LLM; only planner + synthesis LLM calls.
+    if plan.get("request_type") == "baseline_free_tier":
+        if not args_ok:
+            return {
+                "plan": plan,
+                "tool_args": tool_args,
+                "validation": {
+                    "passed": False,
+                    "reasons": plan_reasons + args_reasons,
+                },
+                "execution": {},
+                "final_response": "Baseline request blocked by validation checks.",
+            }
+
+        baseline_result = execute_baseline_workflow(
+            plan,
+            address=address,
+            lat=provided_lat,
+            lng=provided_lng,
+            tool_args=tool_args,
+            llm_client=client,
+        )
+        status = baseline_result.get("status")
+        execution = baseline_result.get("execution_summary") or {}
+        final_report = baseline_result.get("final_report") or {}
+        final_text = str(final_report.get("text") or "").strip() or (
+            "Baseline (Free Tier) California wildfire overview is ready."
+        )
+
+        if status != "completed":
+            return {
+                "plan": plan,
+                "tool_args": tool_args,
+                "validation": {
+                    "passed": False,
+                    "reasons": ["Baseline executor could not complete all required steps."],
+                },
+                "execution": execution,
+                "final_response": "Baseline request could not be completed (for example, due to missing or invalid location data).",
+                "baseline_workflow": baseline_result,
+            }
+
+        return {
+            "plan": plan,
+            "tool_args": tool_args,
+            "validation": {"passed": True, "reasons": []},
+            "execution": execution,
+            "final_response": final_text,
+            "baseline_workflow": baseline_result,
+        }
+
+    # 3. Validator LLM (Full tier and other non-baseline flows)
     validator_llm = client.chat_json(
         VALIDATOR_SYSTEM,
         f"Plan valid={plan_ok}, reasons={plan_reasons}; args valid={args_ok}, reasons={args_reasons}",
@@ -470,7 +528,7 @@ def run_agent(
             "final_response": "Request blocked by validation checks.",
         }
 
-    # 4. Executor: run the plan steps using internal tool identifiers
+    # 4. Executor (Full tier): run the plan steps using internal tool identifiers
     def _in_ca_bounds(lat_v: float, lon_v: float) -> bool:
         # Approximate bounding box for California; used as a safety backstop only.
         return 32.0 <= float(lat_v) <= 42.5 and -124.7 <= float(lon_v) <= -114.0
