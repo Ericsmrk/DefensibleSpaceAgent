@@ -1,199 +1,370 @@
-# Defensible Space Agent
+## ClearSafe California – Defensible Space Agent (Version One)
 
-Structured multi-LLM + tools prototype for wildfire defensible-space assessment.
+Structured, multi‑LLM + tools prototype for **California‑only wildfire defensible‑space and wildfire property assessment** with Baseline (free) and Full (paid) tiers.
 
-## Domain
-**Other Instructor-Approved Domain**: Wildfire Defensible-Space Assessment Agent.
+### 1. Project overview
 
-## What it demonstrates
-- **Tiered assessment workflow**: baseline (address-level) vs full (property-focused) California wildfire assessments.
-- **Multi-LLM pipeline**: planning LLM → validator LLM → reporter LLM (with deterministic rule-based fallbacks when LLMs are unavailable).
-- **Tools layer**: geocoding, NDVI stub (no third‑party satellite provider wired), and fuel‑class classification from NDVI.
-- **Strong validation layer**: explicit rules for plan shape, tool arguments, coordinate sanity, and California‑only scope.
-- **Structured intermediates**: the planner produces an execution spec that downstream validators/executor use to drive the pipeline.
+- **Project name**: ClearSafe California – Defensible Space Agent  
+- **Version**: **Version One (v1)** – current implementation baseline  
+- **Domain**: California wildfire defensible‑space / wildfire property assessment  
+- **Primary audience**:
+  - Homeowners and residents seeking clearer wildfire/defensible‑space guidance in California
+  - Sierra Land Management (SLM) and ClearSafe California stakeholders
+  - Graduate‑level software engineering / agentic AI reviewers
 
-## Architecture overview
+**Elevator pitch**  
+ClearSafe California is a prototype wildfire defensible‑space assessment system that combines a tiered assessment workflow (Baseline vs Full), a structured agent pipeline (planner → validators → executor → reporter), and tool integrations (geocoding, optional NDVI and fuel classification) to produce **California‑focused, CAL FIRE–aligned homeowner guidance** while explicitly modeling uncertainty and system limits.
 
-- **Frontend**: a single‑page UI (served by `web_app.py`) that:
-  - Lets the user search/select a US address using Google Places.
-  - Lets the user choose **Full assessment** vs **Baseline**.
-  - Calls `/api/plan` to preview the internal execution plan.
-  - Calls `/api/assess` to run the full agent pipeline and render results (tier label, NDVI, fuel class, context bullets, and narrative recommendations).
-- **Backend (Flask)**: `web_app.py` exposes:
-  - `GET /` – serves the ClearSafe UI.
-  - `POST /api/plan` – runs the **planner only** and returns the structured plan plus a human‑readable planner summary.
-  - `POST /api/assess` – runs the **full agent pipeline** (planner → validators → executor → reporter).
-  - `POST /api/geocode` – direct Google geocoding helper (used by potential clients; planner/executor geocode via tools).
+This repository is the **authoritative source** for **Version One** of the implementation and documentation.
+
+### 2. Assessment tiers in Version One
+
+The system exposes two conceptual tiers. Only California locations are considered in‑scope.
+
+#### 2.1 Baseline (Free Tier) – Address‑level overview
+
+- **Goal**: Provide a **California address‑level wildfire baseline** using coarse regional context.  
+- **Key behaviors (implemented in v1)**:
+  - Accepts a California address and (optionally) coordinates.
+  - Resolves location via Google Geocoding (when configured) or uses caller‑provided coordinates.
+  - Validates that the location appears to be in California (coarse bounding‑box + geocode metadata).
+  - Gathers **regional** context only:
+    - wildfire hazard context (high‑level)
+    - terrain context (qualitative, no DEM)
+    - regional vegetation / land‑cover context (qualitative, no parcel fuel map)
+  - Synthesizes a **structured Baseline report JSON** via a dedicated LLM prompt, then renders an address‑level homeowner narrative in the UI.
+
+- **Deliberate omissions** (by design in v1):
+  - **No parcel‑centered NDVI** computation in Baseline tier.
+  - **No property‑level fuel classification**.
+  - **No vegetation‑ring / proximity metrics**.
+  - **No image / photo analysis**.
+  - **No Fire Hazard Severity Zone labels or official ratings**.
+
+#### 2.2 Full (Paid Tier) – Property‑focused assessment
+
+- **Goal**: Provide a **property‑focused California wildfire / defensible‑space assessment** that builds on Baseline context and, when data are available, adds more detailed remote sensing signals.
+- **Key behaviors (implemented in v1)**:
+  - Includes all Baseline context (location resolution, hazard, terrain, regional vegetation).
+  - When configured with **Google Earth Engine** (`earthengine-api` installed and authenticated):
+    - Computes **property‑centered NDVI** around the address (Sentinel‑2, configurable date window and cloud threshold).
+    - Derives coarse **fuel classification** from NDVI (e.g., “High Vegetation (High Fuel Load)”).
+    - Optionally generates an NDVI visualization thumbnail used in the UI.
+  - Uses an additional CAL FIRE–aligned LLM stage to synthesize:
+    - prioritized homeowner action bands (Immediate / Near‑term / Seasonal/Ongoing)
+    - zone‑based recommendations for Zone 0/1/2
+    - structured follow‑up items and limitations
+  - Returns a structured `execution` object and detailed recommendation JSON that the UI renders into a rich report.
+
+- **Current placeholders / partial features in v1**:
+  - **Property slope analysis**:
+    - Implemented as a **placeholder**; no DEM or actual slope computation is connected.
+    - The system records a “Not available in this build” summary.
+  - **Vegetation proximity / rings**:
+    - Implemented as a **placeholder**; no ring or distance‑band analysis is computed.
+  - **Uploaded structure/property photo analysis**:
+    - Recognized in the planner and execution spec and represented in the data model.
+    - Execution step is a **placeholder only**; no image analysis API is wired.
+
+### 3. High‑level architecture (Version One)
+
+The architecture follows a **structured agent** pattern with an explicit separation between planning, validation, execution, and reporting.
+
+- **Frontend (single‑page UI) – `web_app.py` / inline `INDEX_HTML`**
+  - Google Maps + Places integration to select a US address (UI text mentions “US”, but the backend constrains the pipeline to California).
+  - Radiobutton choice between **Baseline** and **Full** assessment.
+  - Buttons:
+    - **Run planner** (`POST /api/plan`)
+    - **Analyze Fire Risk** (`POST /api/assess`)
+  - Renders:
+    - Planner summary response for `/api/plan`.
+    - Structured Baseline and Full results (`execution`, Baseline report JSON, CAL FIRE–aligned plan) for `/api/assess`.
+
+- **Backend (Flask) – `web_app.py`**
+  - `GET /` – serves ClearSafe UI (single‑page HTML).
+  - `POST /api/plan` – runs planner‑only path via `run_planner_only` and returns:
+    - structured planner execution spec
+    - human‑readable `planner_summary` text for the UI.
+  - `POST /api/assess` – runs full agent pipeline via `run_agent` in `src/agent.py`.
+  - `POST /api/geocode` – JSON wrapper around `geocode_google` (direct geocoding).
   - `POST /api/joke` – small demo endpoint using the same `LLMClient`.
   - `GET /healthz` – health probe.
-  - `GET /version` – lightweight version marker for deployments.
-- **Core agent orchestration**: `src/agent.py`:
-  - Builds planner context from the user request, address, coordinates, tier preference, and optional photo metadata.
-  - Runs the planner LLM (or a deterministic fallback) to produce an **execution spec**.
-  - Normalizes and validates the plan against a strict schema and California‑only rules.
-  - Derives tool arguments from the plan constraints and context.
-  - Validates tool arguments and coordinates.
-  - Executes the steps in the plan using internal tools in `src/tools.py` and built‑in placeholders for context steps.
-  - Calls the reporter LLM to turn structured evidence into the final human‑readable assessment.
+  - `GET /version` – lightweight deployment marker used by hosting providers.
 
-### Agent pipeline (backend)
+- **Structured agent core – `src/agent.py`**
+  - Builds planner context from:
+    - user request text
+    - optional address and coordinates (from UI or API client)
+    - assessment tier preference
+    - optional photo metadata.
+  - **Planner LLM** (`PLANNER_SYSTEM`/`PLANNER_PROMPT` in `src/prompts.py`):
+    - Produces a strict **execution spec** JSON with:
+      - `request_type` (`baseline_free_tier`, `full_paid_tier`, `incomplete`, `unsupported`)
+      - `assessment_mode` (baseline vs property‑level, incomplete, unsupported)
+      - `location_strategy` (use provided coordinates vs geocode)
+      - `analysis_modules` (conceptual modules)
+      - `steps` (ordered internal tools)
+      - `constraints` (`buffer_m`, `cloud_pct`, optional `date_window`, `photo_count`)
+      - `recommended_next_action` + `planner_summary`.
+    - If the LLM is unavailable or invalid, a deterministic `_fallback_execution_spec` generates a safe California‑only plan.
+  - **Plan normalization and validation** (`src.validators`):
+    - Normalizes legacy planner shapes to canonical schema.
+    - Enforces:
+      - allowed tools and modules only
+      - step ordering and dependency consistency
+      - tier‑specific tool constraints (Baseline cannot use property‑level tools; Full must end in `generate_full_report`)
+      - strict constraints on `buffer_m`, `cloud_pct`, and `photo_count`.
+  - **Tool‑argument derivation and validation**:
+    - Derives `tool_args` from `plan.constraints` + context.
+    - Provides `_fallback_tool_args` that attempts to salvage an address from the free‑text request when needed.
+    - Validates `tool_args` (address presence, NDVI date window, numeric ranges).
+  - **Tier‑specific execution**:
+    - **Baseline**:
+      - Delegates to `execute_baseline_workflow` in `src/baseline_executor.py`.
+      - Uses `BaselineToolContext` and a registry of Baseline tools in `src/baseline_tools.py`:
+        - `resolve_location`
+        - `validate_california_scope`
+        - `gather_hazard_context`
+        - `gather_terrain_context`
+        - `gather_regional_vegetation_context`
+        - `generate_baseline_report` (LLM synthesis + deterministic fallback).
+      - Produces a structured `baseline_workflow` object and `final_report` JSON consumed by the UI.
+    - **Full**:
+      - Executes planner steps using internal tools in `src/tools.py`.
+      - For CAL FIRE–aligned recommendations:
+        - Uses `CALFIRE_RECOMMENDATION_SYSTEM` to produce a structured mitigation plan JSON, normalized via `_normalize_recommendation` with robust fallbacks.
+      - Uses `GENERATOR_SYSTEM` to produce the final homeowner‑readable narrative when LLMs are available; otherwise falls back to deterministic text.
 
-At a high level, `/api/assess` runs:
+### 4. Data and control flow (request lifecycle)
+
+At a high level, `/api/assess` (Full API) flows as:
 
 1. **Planner**
-   - Input: JSON context describing the user request, address, coordinates (if any), and assessment preference.
-   - LLM prompt: `PLANNER_SYSTEM` + `PLANNER_PROMPT` in `src/prompts.py`.
-   - Output: a structured **execution spec** with:
-     - `request_type`: `"baseline_free_tier"`, `"full_paid_tier"`, `"incomplete"`, or `"unsupported"`.
-     - `assessment_mode`: `"address_level_baseline"`, `"property_level_environmental_assessment"`, etc.
-     - `location_strategy`: whether to use provided coordinates or run geocoding.
-     - `analysis_modules`: conceptual stages (hazard, terrain, vegetation, etc.).
-     - `steps`: ordered internal tools like `"resolve_location"`, `"compute_property_ndvi"`, `"classify_property_fuel"`, `"generate_full_report"`, etc.
-     - `constraints`: e.g. `buffer_m`, `cloud_pct`, optional `photo_count` and `date_window`.
-     - `recommended_next_action` and `planner_summary` for UI display.
-   - If the LLM is unavailable or returns invalid JSON, `_fallback_execution_spec` in `src/agent.py` generates a deterministic plan with the same schema, using:
-     - California‑only heuristics.
-     - Simple intent classification (baseline vs full vs incomplete vs unsupported).
+   - Input: structured JSON context (user request, address, coordinates, preference, photo metadata).
+   - Output: execution spec JSON (plan).
+   - Fallback: deterministic execution spec with California‑only rules.
+2. **Validation & tool‑args**
+   - `normalize_plan` → `validate_plan`.
+   - `_tool_args_from_plan` and `validate_tool_args`.
+   - If plan or tool args are invalid, return blocked result with reasons.
+3. **Tier split**
+   - If `request_type == "baseline_free_tier"` → Baseline executor (`execute_baseline_workflow`).
+   - Else → Full executor inside `run_agent`.
+4. **Execution**
+   - **Baseline**:
+     - Runs Baseline tools in a structured registry.
+     - Invokes Baseline synthesis LLM (or deterministic fallback).
+   - **Full**:
+     - Resolves coordinates (or uses provided ones).
+     - Performs California scope check.
+     - Optionally calls Earth Engine–based NDVI tool.
+     - Derives fuel classification.
+     - Populates placeholders for slope, proximity, photo analysis.
+     - Calls CAL FIRE–aligned recommendation LLM and final reporter.
+5. **Response**
+   - Returns a JSON object with:
+     - `plan`
+     - `tool_args`
+     - `validation`
+     - `execution`
+     - `baseline_workflow` (for Baseline flows)
+     - `final_response` (narrative or structured summary text).
 
-2. **Plan normalization and validation**
-   - `src.validators.normalize_plan` coerces legacy/partial planner outputs into the canonical schema and normalizes tool and tier names.
-   - `src.validators.validate_plan` enforces:
-     - Only allowed tools and analysis modules.
-     - Step ordering, contiguity, and dependency rules.
-     - Consistency between `request_type`, `assessment_mode`, `execution_ready`, `location_strategy`, and `steps`.
-     - Tier‑specific constraints (e.g., baseline plans must not include property‑level tools; full plans must end with `generate_full_report`).
+For a more detailed walkthrough, see `docs/architecture_v1.md` and `docs/repo_structure_and_code_guide_v1.md`.
 
-3. **Tool‑argument derivation and validation**
-   - `_tool_args_from_plan` in `src/agent.py` builds tool arguments (address, NDVI window, buffer, cloud cover) from `plan.constraints` and context.
-   - If the plan still requires address‑level geocoding and no address is present, `_fallback_tool_args` attempts to heuristically extract an address string from the user request.
-   - `src.validators.validate_tool_args` checks:
-     - Address presence when `resolve_location` is required.
-     - NDVI date window when `compute_property_ndvi` is present.
-     - `buffer_m` and `cloud_pct` are within allowed ranges.
+### 5. Repository structure (Version One)
 
-4. **Validator LLM**
-   - `VALIDATOR_SYSTEM` in `src/prompts.py` drives a small JSON‑only LLM that receives a summary of plan/tool‑arg validity and returns:
-     - `{"passed": bool, "reasons": [...]}`.
-   - If the LLM is unavailable, `_fallback_validation` returns a conservative allow decision.
-   - If any of the three validators (plan, tool args, validator LLM) fail, the pipeline stops and returns a blocked result to the client.
+A more complete documentation of the repository layout and code roles is in `docs/repo_structure_and_code_guide_v1.md`. At a glance:
 
-5. **Executor (tools + context synthesis)**
-   - For each step in `plan.steps`, the executor in `src/agent.py`:
-     - Handles `"resolve_location"` by calling `geocode_google` in `src/tools.py`.
-     - Gathers coarse hazard/terrain/regional vegetation summaries as structured text for the reporter.
-     - Calls `compute_mean_ndvi` and `classify_fuel` for property‑centered vegetation/fuel interpretation (full tier only).
-     - Sets placeholders for property‑slope, vegetation‑proximity, and photo‑analysis steps (these are currently non‑wired stubs).
-     - Assembles a `report` object describing whether this is a baseline or full report and what evidence was used.
-   - The executor maintains an `execution` dict with keys like `tier`, `address`, `latitude`, `longitude`, `mean_ndvi`, `fuel_class`, `hazard_context`, etc., which is returned in API responses.
+- `web_app.py` – Flask app, UI template, and HTTP API endpoints.
+- `index.html` – optional static frontend (for GitHub Pages / static hosting), wired to the same API shape.
+- `demo.py` – CLI wrapper that calls `run_agent` on example prompts.
+- `src/`:
+  - `agent.py` – main structured agent pipeline (planner, validators, Baseline/Full executors, reporters).
+  - `baseline_tools.py` – Baseline tier tools (location resolution, California scope check, hazard, terrain, vegetation, and Baseline report synthesis).
+  - `baseline_executor.py` – Baseline orchestration and synthesis glue.
+  - `llm_client.py` – lightweight OpenAI Chat Completions client for JSON and text.
+  - `prompts.py` – system prompts and templates for planner, Baseline synthesis, CAL FIRE–aligned recommendations, and reporter.
+  - `tools.py` – geocoding (`geocode_google`), NDVI computation (`compute_mean_ndvi` via Earth Engine when configured), and NDVI‑based fuel classification.
+  - `validators.py` – strict normalization and validation for planner outputs, tool args, and coordinates.
+  - `schemas.py` – dataclasses for the execution spec, Baseline tooling context, and legacy structures.
+  - `__init__.py` – package marker.
+- `tests/`:
+  - `test_agent.py` – agent behavior, planner behavior, fallback logic, California scope rules.
+  - `test_web_app.py` – API contract for `/healthz`, `/api/plan`, `/api/assess`.
+  - `test_validators.py` – plan/tool‑arg/coordinate validation invariants.
+  - `test_tiered_planner_scenarios.py` – scenario‑level tests for tiered planner decisions (Baseline vs Full vs unsupported).
+- `docs/`:
+  - Existing docs (pre‑v1): `architecture.md`, `llm_tool_sequence.md`, `validation_checks.md`, `prompt_templates.md`, `deploy_clearsafe_org.md`.
+  - New **Version One** technical documentation (see below).
 
-6. **Reporter LLM**
-   - `REPORTER_SYSTEM` in `src/prompts.py` instructs the LLM to:
-     - Turn the structured `plan` and `execution` evidence into concise, prioritized homeowner actions and interpretation.
-   - If the LLM is unavailable, a short deterministic baseline/full summary is returned instead.
+### 6. Current capabilities vs limitations (Version One)
 
-### Assessment tiers and behavior
+#### 6.1 Implemented capabilities
 
-- **Baseline (free) tier (`baseline_free_tier`)**
-  - Address‑level California wildfire overview.
-  - Uses location resolution (when needed) plus:
-    - Hazard context.
-    - Terrain context (regional).
-    - Regional vegetation / land‑cover context.
-  - Does **not**:
-    - Compute parcel‑centered NDVI.
-    - Classify property fuel load.
-    - Analyze vegetation proximity rings.
-    - Analyze photos.
-  - Produces a lightweight baseline report and narrative recommendations that emphasize limitations.
+- **California‑only defensible‑space / wildfire assessment framing** with explicit out‑of‑state rejection.
+- **Tiered workflow**:
+  - Baseline (Free Tier) – address‑level overview.
+  - Full (Paid Tier) – property‑focused assessment built on Baseline context.
+- **Structured agent pipeline** with:
+  - execution spec planner LLM
+  - strict plan and tool‑argument validators
+  - Baseline executor and Full executor
+  - CAL FIRE–aligned recommendation LLM and Baseline synthesis LLM.
+- **Tooling**:
+  - Google Geocoding (when `GOOGLE_MAPS_KEY` is provided).
+  - Google Earth Engine–based NDVI and NDVI thumbnails (when `earthengine-api` is installed and authenticated).
+  - Fuel classification from NDVI.
+- **Validation & safety**:
+  - Strict whitelist of tools and modules.
+  - California bounding‑box and geocode‑metadata check.
+  - Strict constraints on radii, cloud percentages, and NDVI windows.
+  - Clear blocking behavior when validations fail.
+- **Testing**:
+  - Unit tests for agent behavior, validators, web API, and planner scenarios (see `tests/`).
 
-- **Full (paid) tier (`full_paid_tier`)**
-  - Property‑focused California wildfire/defensible‑space assessment.
-  - Includes baseline context plus:
-    - Property‑centered NDVI (when a satellite provider is configured).
-    - Fuel classification from NDVI.
-    - Property‑slope and vegetation‑proximity placeholders (currently stubbed in this build).
-    - Optional structure‑photo analysis when photos are present (currently stubbed; no image API calls wired).
-  - Produces CAL FIRE‑aligned recommendations and a full report object.
+#### 6.2 Known limitations and partial features
 
-### Behavior without external keys
+- **California focus only** – non‑California addresses are classified as unsupported.
+- **No official hazard designations** – no Fire Hazard Severity Zone labels or official CAL FIRE ratings are queried or returned.
+- **NDVI and Earth Engine**:
+  - If Earth Engine is not installed or configured, NDVI is **unavailable** and the system records structured reasons in metadata; Full tier still runs but may show “No Data” for NDVI and fuel.
+- **Slope / terrain / proximity**:
+  - No DEM or ring‑analysis tooling is integrated; these appear as explicit “Not available in this build” placeholders.
+- **Photo analysis**:
+  - Recognized conceptually but **not implemented**; no image uploads or image models are wired in v1.
+- **UI**:
+  - UI text allows “US” addresses, but the backend enforces California‑only behavior; this subtle mismatch is documented as a future UX improvement.
 
-- **Without `OPENAI_API_KEY`**
-  - All LLM calls (`LLMClient`) fall back to deterministic, rule‑based behavior:
-    - Planner: `_fallback_execution_spec` generates a safe, California‑only plan.
-    - Validator: `_fallback_validation` marks validation as passed.
-    - Reporter: returns a short canned baseline/full summary.
-  - This allows the pipeline and tests to run deterministically for grading or offline demos.
+For a detailed catalog of gaps and planned improvements, see `docs/current_tools_and_gaps_v1.md`, `docs/recommended_code_changes_v1.md`, and `docs/future_work_v1.md`.
 
-- **Without `GOOGLE_MAPS_KEY`**
-  - `geocode_google` returns `None` and a structured error instead of fabricating coordinates.
-  - Any pipeline path that requires geocoding will fail validation and return an error like “Could not obtain valid coordinates.”
-  - The **UI still loads** (using a placeholder API key), but address‑based geocoding and map selection will not function fully until a real key is configured.
+### 7. Quickstart – local development (Version One)
 
-## Quickstart (CLI)
+#### 7.1 Prerequisites
+
+- Python 3.10+ (tested with modern CPython)
+- Recommended: virtual environment (`venv`, `conda`, etc.)
+
+#### 7.2 Install dependencies
+
+```bash
+python -m venv .venv
+source .venv/bin/activate  # Windows PowerShell: .venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+```
+
+Optional (for NDVI via Earth Engine):
+
+- Install `earthengine-api` and authenticate per Google Earth Engine instructions (not pinned in `requirements.txt` by default to keep the core dependency set minimal).
+
+#### 7.3 Environment setup
+
+Copy the example environment file and add your own values:
+
+```bash
+cp .env.example .env
+```
+
+Set:
+
+- `OPENAI_API_KEY` – enables all LLM‑based planner, validator, synthesis, and recommendation steps.
+- `GOOGLE_MAPS_KEY` – enables Google Maps Geocoding and map/Places integration in the UI.
+
+Without these keys:
+
+- The system relies on robust deterministic fallbacks where implemented (planner, validators, Baseline synthesis, recommendations).
+- Some features (e.g., NDVI via Earth Engine, live geocoding, CAL FIRE–aligned recommendations) may be unavailable or degraded; see `docs/version_one_scope_and_limitations.md`.
+
+#### 7.4 Run the web UI
+
+```bash
+python web_app.py
+```
+
+Then open `http://localhost:8000` in your browser.
+
+- Enter a (California) address.
+- Choose **Baseline** (free) or **Full** (paid) assessment type.
+- Click **Run planner** to view the planner’s explanation and execution spec.
+- Click **Analyze Fire Risk** to run the full agent pipeline and see structured results.
+
+#### 7.5 Run the CLI examples
+
 ```bash
 python demo.py
 ```
 
-## Quickstart (Web UI)
+This script runs `run_agent` against several example requests and prints the full structured JSON outputs.
+
+#### 7.6 Run tests
+
 ```bash
-pip install -r requirements.txt
-python web_app.py
+pytest
 ```
-Open: `http://localhost:8000`
 
-## Optional environment variables for live APIs
-- `OPENAI_API_KEY` for ChatGPT calls.
-- `GOOGLE_MAPS_KEY` for Google geocoding.
+See `docs/testing_and_validation_v1.md` for a detailed overview of testing and validation in Version One.
 
-Without keys, the project runs in deterministic mock mode for instructor reproducibility.
+### 8. Documentation index (Version One)
 
+Key Version One documentation files (all under `docs/`):
 
-## GitHub Pages (temporary frontend)
-You can publish `index.html` as a temporary public frontend right now.
+- **One‑page overview**
+  - `docs/one_page_proposal_v1.md`
+- **Requirements & design**
+  - `docs/system_requirements_specification_v1.md`
+  - `docs/software_design_description_v1.md`
+  - `docs/architecture_v1.md`
+  - `docs/uml_v1.md`
+  - `docs/flowcharts_v1.md`
+- **Implementation‑oriented documentation**
+  - `docs/repo_structure_and_code_guide_v1.md` (recommended first stop for code review)
+  - `docs/current_tools_and_gaps_v1.md`
+  - `docs/recommended_code_changes_v1.md`
+  - `docs/testing_and_validation_v1.md`
+  - `docs/setup_and_run_v1.md`
+  - `docs/secrets_and_configuration_v1.md`
+- **Framing and scope**
+  - `docs/version_one_scope_and_limitations.md`
+  - `docs/software_engineering_principles_v1.md`
+  - `docs/mission_alignment_v1.md`
+  - `docs/future_work_v1.md`
+  - `docs/generative_ai_usage_disclosure_v1.md`
 
-1. Push this repo to GitHub (branch `work` or `main`).
-2. In GitHub: **Settings -> Pages**
-3. Under **Build and deployment**, choose:
-   - Source: **Deploy from a branch**
-   - Branch: `work` (or `main`)
-   - Folder: `/ (root)`
-4. Save and wait for the Pages URL to appear.
+Legacy / pre‑v1 docs:
 
-Notes:
-- On GitHub Pages, the app runs in **frontend-only mock mode** unless you provide an API Base URL in the page UI.
-- If you have the Flask backend deployed (Render/Railway/etc.), paste that URL into the API Base field to run live assessments.
+- `docs/architecture.md`
+- `docs/llm_tool_sequence.md`
+- `docs/validation_checks.md`
+- `docs/prompt_templates.md`
+- `docs/deploy_clearsafe_org.md`
 
+These older files remain for historical context but may not describe the full Version One architecture; where there is any discrepancy, the **v1‑suffixed documentation** and current code should be treated as the source of truth.
 
-## Keys and secrets (required for live online mode)
-Do **not** hardcode or commit keys into this repository.
+### 9. Relationship to Sierra Land Management and ClearSafe California
 
-- Local development: copy `.env.example` to `.env` and set values there.
-- Hosted backend (Render/Railway/Fly): set `OPENAI_API_KEY` and `GOOGLE_MAPS_KEY` in the provider dashboard environment variables.
-- GitHub Pages is static-only: never put API keys in `index.html`/JavaScript because they become public. Use Pages as frontend and call your hosted backend API instead.
+This project is intended as a **graduate‑level software engineering and agentic AI prototype** that could evolve into part of a broader wildfire mitigation and homeowner guidance ecosystem for:
 
-## Deploy to your domain (e.g., clearsafe.org)
-1. Push this repo to GitHub.
-2. Create a web service on Render (or Railway/Fly) using:
-   - build command: `pip install -r requirements.txt && pip install gunicorn`
-   - start command: `gunicorn web_app:app --bind 0.0.0.0:$PORT`
-3. Set environment variables in host dashboard (`OPENAI_API_KEY`, `GOOGLE_MAPS_KEY`).
-4. In your DNS provider, add:
-   - `A`/`ALIAS` record for `@` pointing to host target
-   - `CNAME` for `www` pointing to your host URL
-5. Attach custom domain in hosting dashboard and enable TLS.
+- **Sierra Land Management (SLM)** – as a technical exploration of how structured agents and remote‑sensing tools might support consulting, analyses, or field work in the Sierra Nevada and similar regions.
+- **ClearSafe / ClearSafe California** – as an early prototype of a **California‑only defensible‑space and wildfire property assessment tool** that can:
+  - explain wildfire context in homeowner‑friendly terms,
+  - connect recommendations to CAL FIRE–aligned concepts, and
+  - make limitations and uncertainty explicit.
 
-See `docs/deploy_clearsafe_org.md` for step-by-step details.
+The current Version One implementation focuses on:
 
-## Project structure
-- `src/agent.py` – planner/validator/executor/reporter orchestration pipeline.
-- `src/llm_client.py` – thin HTTP client around OpenAI Chat Completions (JSON/text helpers, fallbacks when key is missing).
-- `src/tools.py` – geocoding + NDVI stub + fuel‑classification tools used by the executor.
-- `src/validators.py` – normalization and strict validation for planner outputs, tool args, and coordinates.
-- `src/prompts.py` – prompt templates for planner, validator, and reporter LLMs.
-- `src/schemas.py` – dataclasses for the internal execution spec and agent outputs.
-- `web_app.py` – Flask app serving the ClearSafe UI and JSON API endpoints.
-- `tests/` – validator and orchestration checks.
+- building a credible structured agent pipeline,
+- clearly separating Baseline vs Full tiers,
+- modeling data and validation flows, and
+- documenting technical debt and future work so the system can be extended in later research or product iterations.
 
-## Security
-- Do not commit API keys.
-- Use environment variables only.
+### 10. Disclaimers and scope boundaries
+
+- **California‑only**: This system is intended only for California properties and locations. Requests clearly outside California are classified as unsupported.
+- **Not an official inspection**: Outputs are informational and **do not** constitute CAL FIRE, local‑agency, insurance, or code‑enforcement determinations.
+- **Data limitations**:
+  - Earth Engine NDVI and any other remote sensing inputs are subject to data availability, cloud cover, and configuration.
+  - Hazard, terrain, and vegetation context in Baseline tier are intentionally coarse and not parcel‑level.
+- **No legal or insurance advice**: Nothing in this repository should be interpreted as legal, regulatory, or insurance advice.
+- **Version One only**: Some capabilities are partial, placeholder, or planned; they are labeled as such in the documentation and never presented as fully implemented.
+
+For a detailed treatment of scope and boundaries, see `docs/version_one_scope_and_limitations.md` and `docs/mission_alignment_v1.md`.
