@@ -6,7 +6,7 @@ load_dotenv()
 
 from flask import Flask, jsonify, render_template_string, request, Response
 
-from src.agent import run_agent
+from src.agent import run_agent, run_planner_only
 from src.llm_client import LLMClient
 from src.tools import geocode_google
 
@@ -591,22 +591,19 @@ def geocode():
 
 @app.post("/api/plan")
 def plan():
-    """Run the planner step with the built-in prompt (OpenAI). Injects the selected address into the prompt."""
+    """Run the internal planner (structured execution spec). Returns plan JSON and user-facing planner_summary."""
     payload = request.get_json(silent=True) or {}
     address = (payload.get("address") or "").strip()
     if not address:
         return jsonify({"error": "address is required"}), 400
-    prompt_text = PLANNER_PROMPT.format(address=address)
+    prompt_text = f"Assess wildfire risk for {address}"
     try:
-        client = LLMClient()
-        if not client.is_configured():
-            return jsonify({"error": "OPENAI_API_KEY not set"}), 503
-        response = client.chat_text(
-            PLANNER_SYSTEM,
-            prompt_text,
-            fallback="Planner could not produce a response.",
+        # Internal planner produces structured spec; planner_summary is for UI display
+        plan_result = run_planner_only(prompt_text)
+        response_text = plan_result.get("planner_summary") or (
+            "Planner produced a structured plan. Run a full assessment to execute it."
         )
-        return jsonify({"plan": {"response": response}})
+        return jsonify({"plan": plan_result, "response": response_text})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
