@@ -38,3 +38,23 @@ def test_plan_returns_structured_plan_and_response():
     assert 'response' in data
     plan = data['plan']
     assert 'request_type' in plan or 'planner_summary' in plan or 'steps' in plan
+
+
+def test_assess_passes_address_lat_lng_and_uses_provided_coordinates():
+    client = app.test_client()
+    resp = client.post(
+        '/api/assess',
+        json={
+            'request': 'Assess wildfire risk for 17825 Woodcrest Dr, Pioneer, Ca',
+            'address': '17825 Woodcrest Dr, Pioneer, Ca',
+            'lat': 38.4655752,
+            'lng': -120.5584229,
+        },
+    )
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert data.get('validation', {}).get('passed') is True
+    ex = data.get('execution') or {}
+    assert ex.get('latitude') == 38.4655752
+    assert ex.get('longitude') == -120.5584229
+    assert ex.get('evidence', {}).get('geocode', {}).get('source') == 'provided'

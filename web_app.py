@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 from dotenv import load_dotenv
 load_dotenv()
@@ -596,10 +597,14 @@ def plan():
     address = (payload.get("address") or "").strip()
     if not address:
         return jsonify({"error": "address is required"}), 400
-    prompt_text = f"Assess wildfire risk for {address}"
+    planner_context = {
+        "user_request": f"Assess wildfire risk for {address}",
+        "provided_address": address,
+        "provided_coordinates": None,
+        "source": "address_only",
+    }
     try:
-        # Internal planner produces structured spec; planner_summary is for UI display
-        plan_result = run_planner_only(prompt_text)
+        plan_result = run_planner_only(json.dumps(planner_context))
         response_text = plan_result.get("planner_summary") or (
             "Planner produced a structured plan. Run a full assessment to execute it."
         )
@@ -631,16 +636,25 @@ def joke():
         return jsonify({"error": str(e)}), 500
 
 
+def _parse_float(value, default=None):
+    if value is None:
+        return default
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
 @app.post("/api/assess")
 def assess():
     payload = request.get_json(silent=True) or {}
     user_request = (payload.get("request") or "").strip()
     if not user_request:
         return jsonify({"error": "request is required"}), 400
-    # Optional: payload may include address, lat, lng for the fire risk pipeline.
-    # run_agent currently derives address from user_request; you can extend to use
-    # payload.get("address"), payload.get("lat"), payload.get("lng") when ready.
-    result = run_agent(user_request)
+    address = (payload.get("address") or "").strip() or None
+    lat = _parse_float(payload.get("lat"))
+    lng = _parse_float(payload.get("lng"))
+    result = run_agent(user_request, address=address, lat=lat, lng=lng)
     return jsonify(result)
 
 

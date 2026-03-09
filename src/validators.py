@@ -9,8 +9,21 @@ REQUIRED_PLAN_KEYS = {"request_type", "assessment_mode", "domain", "user_goal", 
 REQUIRED_TOOL_KEYS = {"address", "buffer_m", "start", "end", "cloud_pct"}
 
 
-def validate_plan(plan: Dict) -> Tuple[bool, List[str]]:
-    """Validate the internal execution spec from the planner."""
+def _steps_use_tool(steps: list, tool_name: str) -> bool:
+    """Return True if any step uses the given tool."""
+    for s in steps or []:
+        if isinstance(s, dict) and s.get("tool") == tool_name:
+            return True
+    return False
+
+
+def validate_plan(
+    plan: Dict,
+    *,
+    provided_lat: float | None = None,
+    provided_lng: float | None = None,
+) -> Tuple[bool, List[str]]:
+    """Validate the internal execution spec from the planner. Optionally validate against provided location context."""
     reasons: List[str] = []
 
     # Required top-level keys
@@ -26,6 +39,23 @@ def validate_plan(plan: Dict) -> Tuple[bool, List[str]]:
     # execution_ready consistency: incomplete/unsupported should not be execution_ready
     if plan.get("execution_ready") is True and rt in ("incomplete", "unsupported"):
         reasons.append("execution_ready must be false when request_type is incomplete or unsupported")
+
+    # Location-strategy consistency with provided coordinates
+    loc = plan.get("location_strategy") or {}
+    use_provided = loc.get("use_provided_coordinates") is True
+    needs_geocoding = loc.get("needs_geocoding") is True
+    steps = plan.get("steps") or []
+    has_geocode_step = _steps_use_tool(steps, "geocode_google")
+    has_ndvi_step = _steps_use_tool(steps, "compute_mean_ndvi")
+
+    if use_provided and (provided_lat is None or provided_lng is None):
+        reasons.append("plan sets use_provided_coordinates=true but no coordinates were supplied in context")
+    if use_provided and has_geocode_step:
+        reasons.append("plan sets use_provided_coordinates=true but includes geocode_google step (redundant)")
+    if needs_geocoding and not has_geocode_step and has_ndvi_step:
+        reasons.append("plan sets needs_geocoding=true and has coordinate-dependent steps but no geocode_google step")
+    if has_ndvi_step and not use_provided and not needs_geocoding:
+        reasons.append("plan has compute_mean_ndvi but location_strategy does not provide coordinates or geocoding")
 
     # steps: must be a list; non-empty when execution_ready is True
     steps = plan.get("steps")

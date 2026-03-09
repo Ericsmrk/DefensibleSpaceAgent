@@ -14,6 +14,7 @@ def _valid_plan(**overrides):
         "domain": "wildfire_defensible_space",
         "user_goal": "Assess home",
         "execution_ready": True,
+        "location_strategy": {"use_provided_coordinates": False, "needs_geocoding": True},
         "steps": [
             {"step_id": 1, "objective": "Geocode", "tool": "geocode_google", "depends_on": [], "required": True},
             {"step_id": 2, "objective": "NDVI", "tool": "compute_mean_ndvi", "depends_on": [1], "required": True},
@@ -119,3 +120,42 @@ def test_allowed_tools_and_request_types():
     assert "full_property_assessment" in VALID_REQUEST_TYPES
     assert "incomplete" in VALID_REQUEST_TYPES
     assert "unsupported" in VALID_REQUEST_TYPES
+
+
+def test_validate_plan_use_provided_coordinates_requires_context():
+    plan = _valid_plan(
+        location_strategy={"use_provided_coordinates": True, "needs_geocoding": False},
+        steps=[
+            {"step_id": 1, "objective": "NDVI", "tool": "compute_mean_ndvi", "depends_on": [], "required": True},
+            {"step_id": 2, "objective": "Fuel", "tool": "classify_fuel", "depends_on": [1], "required": True},
+        ],
+    )
+    ok, reasons = validate_plan(plan, provided_lat=None, provided_lng=None)
+    assert not ok
+    assert any("no coordinates were supplied" in reason for reason in reasons)
+
+
+def test_validate_plan_use_provided_coordinates_with_context_passes():
+    plan = _valid_plan(
+        location_strategy={"use_provided_coordinates": True, "needs_geocoding": False},
+        steps=[
+            {"step_id": 1, "objective": "NDVI", "tool": "compute_mean_ndvi", "depends_on": [], "required": True},
+            {"step_id": 2, "objective": "Fuel", "tool": "classify_fuel", "depends_on": [1], "required": True},
+        ],
+    )
+    ok, reasons = validate_plan(plan, provided_lat=38.4, provided_lng=-120.5)
+    assert ok
+    assert reasons == []
+
+
+def test_validate_plan_use_provided_with_geocode_step_invalid():
+    plan = _valid_plan(
+        location_strategy={"use_provided_coordinates": True, "needs_geocoding": False},
+        steps=[
+            {"step_id": 1, "objective": "Geocode", "tool": "geocode_google", "depends_on": [], "required": True},
+            {"step_id": 2, "objective": "NDVI", "tool": "compute_mean_ndvi", "depends_on": [1], "required": True},
+        ],
+    )
+    ok, reasons = validate_plan(plan, provided_lat=38.4, provided_lng=-120.5)
+    assert not ok
+    assert any("geocode" in reason and "redundant" in reason for reason in reasons)
