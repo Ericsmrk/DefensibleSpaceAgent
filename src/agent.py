@@ -7,7 +7,7 @@ from typing import Any, Dict, Optional
 from .llm_client import LLMClient
 
 logger = logging.getLogger(__name__)
-from .prompts import GENERATOR_SYSTEM, PLANNER_PROMPT, PLANNER_SYSTEM, REPORTER_SYSTEM, VALIDATOR_SYSTEM
+from .prompts import EXECUTION_SYSTEM, GENERATOR_SYSTEM, PLANNER_PROMPT, PLANNER_SYSTEM, VALIDATOR_SYSTEM
 from .tools import classify_fuel, compute_mean_ndvi, geocode_google
 from .validators import normalize_plan, validate_coordinates, validate_plan, validate_tool_args
 
@@ -609,7 +609,7 @@ def run_agent(
         else "Full (Paid Tier) California wildfire assessment is ready."
     )
     final_response = client.chat_text(
-        REPORTER_SYSTEM,
+        GENERATOR_SYSTEM,
         f"Plan:\n{json.dumps(plan)}\n\nExecution evidence:\n{json.dumps(execution)}",
         fallback=fallback_text,
     )

@@ -213,18 +213,6 @@ INDEX_HTML = """
       cursor: not-allowed;
     }
     .muted { color: var(--text-muted); }
-    textarea {
-      width: 100%;
-      min-height: 80px;
-      font-size: 1rem;
-      padding: 0.75rem;
-      border: 1px solid var(--border);
-      border-radius: 10px;
-      background: var(--bg);
-      color: var(--text);
-      font-family: inherit;
-      margin-top: 0.5rem;
-    }
     pre { background: var(--bg); padding: 1rem; border-radius: 8px; overflow-x: auto; font-size: 0.85rem; border: 1px solid var(--border); }
     .hidden-fields { display: none; }
     .planner-response {
@@ -248,6 +236,95 @@ INDEX_HTML = """
     .assessment-choice input[type="radio"] { margin-top: 0.2rem; accent-color: var(--accent); }
     .assessment-choice .choice-desc { font-size: 0.875rem; color: var(--text-muted); margin-top: 0.15rem; }
     .recommend { font-size: 0.85rem; color: var(--accent); margin-top: 0.5rem; }
+    .result-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 1rem;
+      margin-bottom: 1rem;
+    }
+    .result-title { margin: 0 0 0.35rem 0; font-size: 1.1rem; font-weight: 600; }
+    .result-address { margin: 0; font-size: 0.9rem; color: var(--text-muted); }
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      padding: 0.18rem 0.6rem;
+      border-radius: 999px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+    .pill-tier {
+      background: rgba(249, 115, 22, 0.12);
+      color: var(--accent);
+      border: 1px solid rgba(249, 115, 22, 0.4);
+    }
+    .pill-status-ok {
+      background: rgba(34, 197, 94, 0.12);
+      color: var(--success);
+      border: 1px solid rgba(34, 197, 94, 0.45);
+    }
+    .pill-status-blocked {
+      background: rgba(220, 38, 38, 0.12);
+      color: var(--danger);
+      border: 1px solid rgba(220, 38, 38, 0.45);
+    }
+    .result-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+      gap: 0.9rem;
+      margin: 0.25rem 0 0.75rem 0;
+    }
+    .metric-card {
+      background: var(--bg);
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      padding: 0.75rem 0.9rem;
+    }
+    .metric-label {
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--text-muted);
+      margin-bottom: 0.2rem;
+    }
+    .metric-value {
+      font-size: 1.1rem;
+      font-weight: 600;
+      margin-bottom: 0.15rem;
+    }
+    .metric-caption {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+    }
+    .result-section {
+      margin-top: 0.6rem;
+    }
+    .result-section-title {
+      font-size: 0.9rem;
+      font-weight: 600;
+      margin: 0 0 0.25rem 0;
+    }
+    .result-text {
+      font-size: 0.9rem;
+      line-height: 1.6;
+      color: var(--text);
+      margin: 0;
+    }
+    .result-subtext {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      margin-top: 0.35rem;
+    }
+    .result-details {
+      margin-top: 0.9rem;
+    }
+    .result-details summary {
+      cursor: pointer;
+      font-size: 0.85rem;
+      color: var(--text-muted);
+    }
   </style>
 </head>
 <body>
@@ -258,7 +335,7 @@ INDEX_HTML = """
     <h2 class="card-title">Welcome to ClearSafe</h2>
     <p class="intro-text">
       This app helps you assess wildfire defensible-space and fire clearance for a property in the US.
-      You enter an address, choose the type of assessment, then run the planning step. After reviewing the plan, you can run the full analysis to get vegetation (NDVI), fuel class, and recommendations.
+      You enter an address, choose the type of assessment, then run the planning step. After reviewing the plan, you can run the full analysis to get data (when available), fuel class, and recommendations. NDVI and some environmental metrics depend on external data sources and may be unavailable in some deployments.
     </p>
     <p class="intro-text" style="margin-bottom: 0;"><strong>How to use:</strong></p>
     <ol class="intro-steps">
@@ -310,14 +387,6 @@ INDEX_HTML = """
       <p class="muted" style="margin: 1rem 0 .5rem 0;">After reviewing the plan above, run the full pipeline to get results.</p>
       <button type="button" id="analyze-btn" class="btn btn-primary" disabled>Analyze Fire Risk</button>
     </form>
-  </section>
-
-  <section class="card" style="margin-top: 1.5rem;">
-    <h2 class="card-title">What should we assess?</h2>
-    <label for="prompt">Optional notes or focus</label>
-    <textarea id="prompt" placeholder="e.g. Focus on vegetation within 30 ft of structures"></textarea>
-    <br />
-    <button type="button" id="run" class="btn btn-primary">Run Assessment (manual)</button>
   </section>
 
   <section class="card" style="margin-top: 1.5rem;">
@@ -499,8 +568,6 @@ INDEX_HTML = """
         lng: lng,
         assessment_type: getAssessmentType()
       };
-      var promptText = document.getElementById('prompt').value.trim();
-      if (promptText) payload.request += '. ' + promptText;
 
       var r = await fetch('/api/assess', {
         method: 'POST',
@@ -514,12 +581,75 @@ INDEX_HTML = """
       }
       var data = await r.json();
       var ex = data.execution || {};
-      out.innerHTML = '<h3>Result</h3>' +
-        '<p><b>Address:</b> ' + escapeHtml(ex.address || 'n/a') + '</p>' +
-        '<p><b>NDVI:</b> ' + (ex.mean_ndvi != null ? ex.mean_ndvi : 'n/a') + '</p>' +
-        '<p><b>Fuel Class:</b> ' + escapeHtml(ex.fuel_class || 'n/a') + '</p>' +
-        '<p><b>Recommendation:</b> ' + escapeHtml(data.final_response || '') + '</p>' +
-        '<details><summary>Structured JSON</summary><pre>' + escapeHtml(JSON.stringify(data, null, 2)) + '</pre></details>';
+
+      var tierRaw = ex.tier || (data.plan && data.plan.request_type) || '';
+      var tierLabel = 'Assessment';
+      if (tierRaw === 'full_paid_tier') tierLabel = 'Full assessment';
+      else if (tierRaw === 'baseline_free_tier') tierLabel = 'Baseline overview';
+
+      var validation = data.validation || {};
+      var passed = validation.passed !== false;
+      var statusLabel = passed ? 'Completed' : 'Blocked';
+      var statusClass = passed ? 'pill-status-ok' : 'pill-status-blocked';
+
+      var ndviVal = ex.mean_ndvi != null ? ex.mean_ndvi : null;
+      var ndviDisplay = ndviVal != null ? ndviVal : 'Not available';
+      var ndviCaption = ndviVal != null
+        ? 'Higher values usually mean denser, greener vegetation.'
+        : 'NDVI is not available in this deployment or for this location.';
+
+      var fuel = ex.fuel_class || 'No Data';
+      var fuelCaption = fuel === 'No Data'
+        ? 'Fuel classification is unavailable when NDVI is missing.'
+        : 'Interpretation based on available vegetation signal.';
+
+      var addressDisplay = escapeHtml(ex.address || addr || 'n/a');
+      var mainText = escapeHtml(data.final_response || '');
+
+      var hazardSummary = (ex.hazard_context && ex.hazard_context.summary) || '';
+      var terrainSummary = (ex.terrain_context && ex.terrain_context.summary) || '';
+      var vegSummary = (ex.regional_vegetation_context && ex.regional_vegetation_context.summary) || '';
+
+      var contextBits = [];
+      if (hazardSummary) contextBits.push('• ' + escapeHtml(hazardSummary));
+      if (terrainSummary) contextBits.push('• ' + escapeHtml(terrainSummary));
+      if (vegSummary) contextBits.push('• ' + escapeHtml(vegSummary));
+      var contextHtml = contextBits.length
+        ? '<div class="result-section"><h4 class="result-section-title">What this is based on</h4><p class="result-text">' + contextBits.join('<br>') + '</p></div>'
+        : '';
+
+      out.innerHTML =
+        '<div class="result-header">' +
+          '<div>' +
+            '<div class="pill pill-tier">' + escapeHtml(tierLabel) + '</div>' +
+            '<h3 class="result-title">Assessment result</h3>' +
+            '<p class="result-address">' + addressDisplay + '</p>' +
+          '</div>' +
+          '<div>' +
+            '<div class="pill ' + statusClass + '">' + escapeHtml(statusLabel) + '</div>' +
+          '</div>' +
+        '</div>' +
+        '<div class="result-grid">' +
+          '<div class="metric-card">' +
+            '<div class="metric-label">NDVI (vegetation index)</div>' +
+            '<div class="metric-value">' + ndviDisplay + '</div>' +
+            '<div class="metric-caption">' + ndviCaption + '</div>' +
+          '</div>' +
+          '<div class="metric-card">' +
+            '<div class="metric-label">Fuel class</div>' +
+            '<div class="metric-value">' + escapeHtml(fuel) + '</div>' +
+            '<div class="metric-caption">' + fuelCaption + '</div>' +
+          '</div>' +
+        '</div>' +
+        '<div class="result-section">' +
+          '<h4 class="result-section-title">Top actions and interpretation</h4>' +
+          '<p class="result-text">' + mainText + '</p>' +
+          '<p class="result-subtext">These recommendations are based on California-focused wildfire defensible-space guidance and the evidence listed below.</p>' +
+        '</div>' +
+        contextHtml +
+        '<details class="result-details"><summary>View full structured output</summary><pre>' +
+          escapeHtml(JSON.stringify(data, null, 2)) +
+        '</pre></details>';
     });
 
     document.getElementById('run-plan').onclick = async function() {
@@ -574,41 +704,6 @@ INDEX_HTML = """
       }
       jokeOut.innerHTML = '<p style="margin:0; white-space: pre-wrap;">' + escapeHtml(data.joke || '') + '</p>';
     });
-
-    document.getElementById('run').onclick = async function() {
-      var prompt = document.getElementById('prompt').value.trim();
-      if (!prompt) prompt = 'Assess wildfire risk for the selected property.';
-      var addr = hiddenAddress.value.trim();
-      if (addr) prompt = 'Assess wildfire risk for ' + addr + '. ' + prompt;
-
-      out.style.display = 'block';
-      out.innerHTML = '<p class="muted">Running assessment...</p>';
-
-      var r = await fetch('/api/assess', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          request: prompt,
-          address: addr || undefined,
-          lat: hiddenLat.value || undefined,
-          lng: hiddenLng.value || undefined,
-          assessment_type: getAssessmentType()
-        })
-      });
-
-      if (!r.ok) {
-        out.innerHTML = '<p>Request failed.</p>';
-        return;
-      }
-      var data = await r.json();
-      var ex = data.execution || {};
-      out.innerHTML = '<h3>Result</h3>' +
-        '<p><b>Address:</b> ' + escapeHtml(ex.address || 'n/a') + '</p>' +
-        '<p><b>NDVI:</b> ' + (ex.mean_ndvi != null ? ex.mean_ndvi : 'n/a') + '</p>' +
-        '<p><b>Fuel Class:</b> ' + escapeHtml(ex.fuel_class || 'n/a') + '</p>' +
-        '<p><b>Recommendation:</b> ' + escapeHtml(data.final_response || '') + '</p>' +
-        '<details><summary>Structured JSON</summary><pre>' + escapeHtml(JSON.stringify(data, null, 2)) + '</pre></details>';
-    };
 
     (function loadMaps() {
       var key = {{ google_maps_api_key|tojson }};
