@@ -652,10 +652,16 @@ def geocode():
 def _assessment_preference_from_payload(payload):
     """Map UI assessment_type ('full'|'baseline') to planner request_type."""
     at = (payload.get("assessment_type") or payload.get("assessment_preference") or "").strip().lower()
-    if at == "baseline":
-        return "address_baseline"
-    if at == "full":
-        return "full_property_assessment"
+    # Canonical tier names
+    if at in ("baseline", "baseline_free_tier"):
+        return "baseline_free_tier"
+    if at in ("full", "full_paid_tier"):
+        return "full_paid_tier"
+    # Legacy values (compat)
+    if at == "address_baseline":
+        return "baseline_free_tier"
+    if at == "full_property_assessment":
+        return "full_paid_tier"
     return None
 
 
@@ -731,6 +737,8 @@ def assess():
     address = (payload.get("address") or "").strip() or None
     lat = _parse_float(payload.get("lat"))
     lng = _parse_float(payload.get("lng"))
+    uploaded_photos_present = payload.get("uploaded_photos_present")
+    uploaded_photos_count = payload.get("uploaded_photos_count")
     # Debug: log incoming body so we can verify UI sends address/lat/lng when place is selected
     logger.info(
         "assess request: request=%r address=%r lat=%s lng=%s",
@@ -746,6 +754,8 @@ def assess():
         lat=lat,
         lng=lng,
         assessment_preference=pref,
+        uploaded_photos_present=bool(uploaded_photos_present) if uploaded_photos_present is not None else None,
+        uploaded_photos_count=int(uploaded_photos_count) if str(uploaded_photos_count or "").strip().isdigit() else None,
     )
     return jsonify(result)
 

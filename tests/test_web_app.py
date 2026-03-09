@@ -59,7 +59,7 @@ def test_plan_with_lat_lng_uses_provided_coordinates():
     assert loc.get('needs_geocoding') is False
     steps = plan.get('steps') or []
     tool_names = [s.get('tool') for s in steps if isinstance(s, dict)]
-    assert 'geocode_google' not in tool_names
+    assert 'resolve_location' not in tool_names
 
 
 def test_assess_passes_address_lat_lng_and_uses_provided_coordinates():
@@ -89,7 +89,7 @@ def test_assess_passes_address_lat_lng_and_uses_provided_coordinates():
     assert loc.get('needs_geocoding') is False
     steps = plan.get('steps') or []
     tool_names = [s.get('tool') for s in steps if isinstance(s, dict)]
-    assert 'geocode_google' not in tool_names
+    assert 'resolve_location' not in tool_names
 
 
 def test_assess_accepts_string_lat_lng_from_frontend():

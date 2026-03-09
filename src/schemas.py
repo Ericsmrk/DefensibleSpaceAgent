@@ -47,8 +47,8 @@ class ExecutionStep:
 class ExecutionSpec:
     """Structured internal planner output: machine-readable execution plan."""
 
-    request_type: str  # address_baseline | full_property_assessment | incomplete | unsupported
-    assessment_mode: str  # address_level_baseline | property_level_environmental_assessment
+    request_type: str  # baseline_free_tier | full_paid_tier | incomplete | unsupported
+    assessment_mode: str  # address_level_baseline | property_level_environmental_assessment | incomplete_request | unsupported_request
     domain: str = "wildfire_defensible_space"
     user_goal: str = ""
     execution_ready: bool = True
@@ -158,7 +158,7 @@ def execution_spec_from_dict(d: Dict[str, Any]) -> ExecutionSpec:
         loc = {}
     return ExecutionSpec(
         request_type=str(d.get("request_type", "incomplete")),
-        assessment_mode=str(d.get("assessment_mode", "address_level_baseline")),
+        assessment_mode=str(d.get("assessment_mode", "incomplete_request")),
         domain=str(d.get("domain", "wildfire_defensible_space")),
         user_goal=str(d.get("user_goal", "")),
         execution_ready=bool(d.get("execution_ready", True)),
