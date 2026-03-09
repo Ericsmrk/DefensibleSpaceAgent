@@ -17,6 +17,7 @@ def _planner_context(
     address: Optional[str] = None,
     lat: Optional[float] = None,
     lng: Optional[float] = None,
+    assessment_preference: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Build structured context for the planner. Used as the planner user payload (instruction-only system; context in user message)."""
     out = {
@@ -36,6 +37,8 @@ def _planner_context(
             out["provided_coordinates"] = None
     elif address:
         out["source"] = "address_only"
+    if assessment_preference in ("full_property_assessment", "address_baseline"):
+        out["assessment_preference"] = assessment_preference
     return out
 
 
@@ -222,6 +225,7 @@ def run_agent(
     address: Optional[str] = None,
     lat: Optional[float] = None,
     lng: Optional[float] = None,
+    assessment_preference: Optional[str] = None,
     model: str = "gpt-4o-mini",
     planner_prompt: Optional[str] = None,
 ) -> Dict[str, Any]:
@@ -239,7 +243,13 @@ def run_agent(
             provided_lat, provided_lng = float(lat), float(lng)
         except (TypeError, ValueError):
             pass
-    context = _planner_context(user_request, address=address, lat=provided_lat, lng=provided_lng)
+    context = _planner_context(
+        user_request,
+        address=address,
+        lat=provided_lat,
+        lng=provided_lng,
+        assessment_preference=assessment_preference,
+    )
     planner_user = json.dumps(context) if not (planner_prompt or "").strip() else planner_prompt.strip()
 
     # Debug: log planner payload so we can verify provided_coordinates when lat/lng are available

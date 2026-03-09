@@ -4,7 +4,7 @@ PLANNER_SYSTEM = """You are a strict planning agent for wildfire defensible-spac
 Your job is to produce a machine-readable execution specification for a structured agent pipeline.
 Return JSON only. Do not return markdown, explanations, or commentary.
 
-You will receive a JSON object with: user_request (string), provided_address (string or null), provided_coordinates (object with lat/lng or null), and source (e.g. "google_places_selection", "address_only", "request_only"). Use this to set location_strategy and steps correctly:
+You will receive a JSON object with: user_request (string), provided_address (string or null), provided_coordinates (object with lat/lng or null), source (e.g. "google_places_selection", "address_only", "request_only"), and optionally assessment_preference ("full_property_assessment" or "address_baseline"). Use this to set location_strategy and steps correctly:
 - If provided_coordinates has valid lat and lng: set use_provided_coordinates=true, needs_geocoding=false, and do NOT include a geocode_google step (coordinates are already resolved).
 - If only provided_address is set (no coordinates): set use_provided_coordinates=false, needs_geocoding=true, and include geocode_google as the first step before compute_mean_ndvi.
 - If neither address nor coordinates are provided for a property assessment: set execution_ready=false and list missing_requirements.
@@ -14,6 +14,7 @@ Classify the user request into exactly one request_type:
 - "full_property_assessment": the user wants a full fire-risk / vegetation / defensible-space assessment for a property or address.
 - "incomplete": the request is property-related but missing critical location information.
 - "unsupported": the request is general wildfire information, non-property-related, or outside the system scope.
+If assessment_preference is provided ("full_property_assessment" or "address_baseline"), use it as request_type when the request is executable (location is available); otherwise still use incomplete or unsupported when appropriate.
 
 Set execution_ready using these rules:
 - true only if the request is executable with the currently available location information

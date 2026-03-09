@@ -240,15 +240,38 @@ INDEX_HTML = """
     .planner-response strong { color: var(--accent); font-weight: 600; }
     .planner-response .planner-next-steps-header { color: var(--accent); font-weight: 600; }
     .planner-response .planner-next-steps-choice { color: #ffffff; }
+    .intro-text { line-height: 1.65; margin: 0.5rem 0 1rem 0; color: var(--text-muted); font-size: 0.95rem; }
+    .intro-steps { margin: 1rem 0; padding-left: 1.25rem; }
+    .intro-steps li { margin: 0.4rem 0; color: var(--text); }
+    .assessment-choice { margin: 1rem 0 1.25rem 0; }
+    .assessment-choice label { display: flex; align-items: flex-start; gap: 0.6rem; margin: 0.5rem 0; cursor: pointer; }
+    .assessment-choice input[type="radio"] { margin-top: 0.2rem; accent-color: var(--accent); }
+    .assessment-choice .choice-desc { font-size: 0.875rem; color: var(--text-muted); margin-top: 0.15rem; }
+    .recommend { font-size: 0.85rem; color: var(--accent); margin-top: 0.5rem; }
   </style>
 </head>
 <body>
   <h1>ClearSafe</h1>
-  <p class="sub">Wildfire defensible-space assessment</p>
+  <p class="sub">Fire clearance & defensible-space assessment</p>
+
+  <section class="card" aria-label="Introduction">
+    <h2 class="card-title">Welcome to ClearSafe</h2>
+    <p class="intro-text">
+      This app helps you assess wildfire defensible-space and fire clearance for a property in the US.
+      You enter an address, choose the type of assessment, then run the planning step. After reviewing the plan, you can run the full analysis to get vegetation (NDVI), fuel class, and recommendations.
+    </p>
+    <p class="intro-text" style="margin-bottom: 0;"><strong>How to use:</strong></p>
+    <ol class="intro-steps">
+      <li>Enter a US address below and select a result from the list.</li>
+      <li>Choose <strong>Full assessment</strong> (vegetation, fuel, recommendations) or <strong>Baseline</strong> (address-level overview only).</li>
+      <li>Click <strong>Run planner</strong> to generate the assessment plan.</li>
+      <li>After reviewing the plan, click <strong>Analyze Fire Risk</strong> to run the agent and get your results.</li>
+    </ol>
+  </section>
 
   <section class="card" aria-label="Property search">
     <h2 class="card-title">Find your property</h2>
-    <p class="muted" style="margin: 0 0 0.75rem 0;">Start typing a US address to search. Select a result to enable fire risk analysis.</p>
+    <p class="muted" style="margin: 0 0 0.75rem 0;">Start typing a US address to search. Select a result, then choose Full or Baseline assessment and run the planner.</p>
     <form id="property-form" action="#" method="post">
       <div class="search-wrap">
         <input type="text" id="address" class="search-input" placeholder="e.g. 17825 Woodcrest Dr, Pioneer, CA" autocomplete="off" aria-label="Property address" />
@@ -261,10 +284,31 @@ INDEX_HTML = """
       <input type="hidden" id="selected_address" name="selected_address" value="" />
       <input type="hidden" id="selected_lat" name="selected_lat" value="" />
       <input type="hidden" id="selected_lng" name="selected_lng" value="" />
-      <button type="button" id="analyze-btn" class="btn btn-primary" disabled>Analyze Fire Risk</button>
-      <p class="muted" style="margin: 1rem 0 .5rem 0;">Run the planner (OpenAI) using the address above.</p>
+
+      <div class="assessment-choice">
+        <p class="card-title" style="margin-bottom: 0.25rem;">Assessment type</p>
+        <label>
+          <input type="radio" name="assessment_type" value="full" id="assessment-full" checked />
+          <span>
+            <strong>Full assessment</strong>
+            <span class="choice-desc">Vegetation (NDVI), fuel classification, and defensible-space recommendations.</span>
+          </span>
+        </label>
+        <label>
+          <input type="radio" name="assessment_type" value="baseline" id="assessment-baseline" />
+          <span>
+            <strong>Baseline</strong>
+            <span class="choice-desc">Address-level overview only; no full environmental pipeline.</span>
+          </span>
+        </label>
+        <p class="recommend">We recommend Full assessment for actionable defensible-space advice.</p>
+      </div>
+
+      <p class="muted" style="margin: 1rem 0 .5rem 0;">Run the planner to build the assessment plan for your address and chosen type.</p>
       <button type="button" id="run-plan" class="btn btn-primary">Run planner</button>
       <div id="plan-out" class="card" style="display:none; margin-top: 1rem;"></div>
+      <p class="muted" style="margin: 1rem 0 .5rem 0;">After reviewing the plan above, run the full pipeline to get results.</p>
+      <button type="button" id="analyze-btn" class="btn btn-primary" disabled>Analyze Fire Risk</button>
     </form>
   </section>
 
@@ -434,6 +478,11 @@ INDEX_HTML = """
       });
     };
 
+    function getAssessmentType() {
+      var full = document.getElementById('assessment-full');
+      return (full && full.checked) ? 'full' : 'baseline';
+    }
+
     document.getElementById('analyze-btn').addEventListener('click', async function() {
       var addr = hiddenAddress.value.trim();
       var lat = hiddenLat.value.trim();
@@ -447,7 +496,8 @@ INDEX_HTML = """
         request: 'Assess wildfire risk for ' + addr,
         address: addr,
         lat: lat,
-        lng: lng
+        lng: lng,
+        assessment_type: getAssessmentType()
       };
       var promptText = document.getElementById('prompt').value.trim();
       if (promptText) payload.request += '. ' + promptText;
@@ -481,7 +531,7 @@ INDEX_HTML = """
       var planOut = document.getElementById('plan-out');
       planOut.style.display = 'block';
       planOut.innerHTML = '<p class="muted">Running planner...</p>';
-      var payload = { address: address };
+      var payload = { address: address, assessment_type: getAssessmentType() };
       if (hiddenLat.value && hiddenLng.value) {
         payload.lat = hiddenLat.value.trim();
         payload.lng = hiddenLng.value.trim();
@@ -541,7 +591,8 @@ INDEX_HTML = """
           request: prompt,
           address: addr || undefined,
           lat: hiddenLat.value || undefined,
-          lng: hiddenLng.value || undefined
+          lng: hiddenLng.value || undefined,
+          assessment_type: getAssessmentType()
         })
       });
 
@@ -598,6 +649,16 @@ def geocode():
         return jsonify({"error": str(e)}), 500
 
 
+def _assessment_preference_from_payload(payload):
+    """Map UI assessment_type ('full'|'baseline') to planner request_type."""
+    at = (payload.get("assessment_type") or payload.get("assessment_preference") or "").strip().lower()
+    if at == "baseline":
+        return "address_baseline"
+    if at == "full":
+        return "full_property_assessment"
+    return None
+
+
 @app.post("/api/plan")
 def plan():
     """Run the internal planner (structured execution spec). Returns plan JSON and user-facing planner_summary."""
@@ -608,12 +669,15 @@ def plan():
     lat = _parse_float(payload.get("lat"))
     lng = _parse_float(payload.get("lng"))
     has_coords = lat is not None and lng is not None
+    pref = _assessment_preference_from_payload(payload)
     planner_context = {
         "user_request": f"Assess wildfire risk for {address}",
         "provided_address": address,
         "provided_coordinates": {"lat": lat, "lng": lng} if has_coords else None,
         "source": "google_places_selection" if has_coords else "address_only",
     }
+    if pref:
+        planner_context["assessment_preference"] = pref
     try:
         plan_result = run_planner_only(json.dumps(planner_context))
         if has_coords:
@@ -675,7 +739,14 @@ def assess():
         lat if lat is not None else "None",
         lng if lng is not None else "None",
     )
-    result = run_agent(user_request, address=address, lat=lat, lng=lng)
+    pref = _assessment_preference_from_payload(payload)
+    result = run_agent(
+        user_request,
+        address=address,
+        lat=lat,
+        lng=lng,
+        assessment_preference=pref,
+    )
     return jsonify(result)
 
 
