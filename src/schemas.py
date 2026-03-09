@@ -107,18 +107,57 @@ class ToolResult:
 
 
 @dataclass
-class FinalBaselineReport:
-    """Structured representation of the synthesized Baseline report."""
+class BaselineSynthesisSections:
+    """Sections of the structured Baseline synthesis output."""
 
-    tier: str
-    text: str
-    sections: Dict[str, str] = field(default_factory=dict)
+    california_scope_validation: str
+    fire_hazard_context: str
+    terrain_context: str
+    regional_vegetation_context: str
+    limitations: str
+
+
+@dataclass
+class BaselineSynthesisEvidence:
+    """Short fact strings used as evidence for each section."""
+
+    california_scope_validation: List[str] = field(default_factory=list)
+    fire_hazard_context: List[str] = field(default_factory=list)
+    terrain_context: List[str] = field(default_factory=list)
+    regional_vegetation_context: List[str] = field(default_factory=list)
+
+
+@dataclass
+class FinalBaselineReport:
+    """
+    Structured representation of the synthesized Baseline report.
+
+    This is the primary artifact for Baseline presentation and should match the JSON
+    contract expected by the UI.
+    """
+
+    report_title: str
+    summary: str
+    sections: BaselineSynthesisSections
+    evidence_used: BaselineSynthesisEvidence
 
     def to_dict(self) -> Dict[str, Any]:
         return {
-            "tier": self.tier,
-            "text": self.text,
-            "sections": self.sections,
+            "report_title": self.report_title,
+            "summary": self.summary,
+            "sections": {
+                "california_scope_validation": self.sections.california_scope_validation,
+                "fire_hazard_context": self.sections.fire_hazard_context,
+                "terrain_context": self.sections.terrain_context,
+                "regional_vegetation_context": self.sections.regional_vegetation_context,
+                "limitations": self.sections.limitations,
+            },
+            "evidence_used": {
+                "california_scope_validation": self.evidence_used.california_scope_validation,
+                "fire_hazard_context": self.evidence_used.fire_hazard_context,
+                "terrain_context": self.evidence_used.terrain_context,
+                "regional_vegetation_context": self.evidence_used.regional_vegetation_context,
+            },
         }
 
 

@@ -6,6 +6,8 @@ from .baseline_tools import TOOL_REGISTRY
 from .llm_client import LLMClient
 from .schemas import (
     BaselineOrchestratorResult,
+    BaselineSynthesisEvidence,
+    BaselineSynthesisSections,
     BaselineToolContext,
     ExecutionSpec,
     FinalBaselineReport,
@@ -129,16 +131,43 @@ def execute_baseline_workflow(
                 "execution_summary": execution_summary,
             }
 
-    # Extract the synthesized Baseline report text from the generate_baseline_report tool output.
+    # Extract the synthesized Baseline report JSON from the generate_baseline_report tool output.
     synth_result = _find_first_tool_result(step_outputs, "generate_baseline_report")
-    report_text = ""
+    synthesis_dict: Dict[str, Any] = {}
     if synth_result and isinstance(synth_result.data, dict):
-        report_text = str(synth_result.data.get("report_text", "")).strip()
+        synthesis_dict = synth_result.data
+
+    sections_raw = synthesis_dict.get("sections") or {}
+    evidence_raw = synthesis_dict.get("evidence_used") or {}
+
+    def _s(val: Any) -> str:
+        return str(val).strip() if isinstance(val, str) else ""
+
+    def _lst(val: Any) -> List[str]:
+        if isinstance(val, list):
+            return [str(x) for x in val if isinstance(x, str) and x.strip()]
+        return []
+
+    sections = BaselineSynthesisSections(
+        california_scope_validation=_s(sections_raw.get("california_scope_validation")),
+        fire_hazard_context=_s(sections_raw.get("fire_hazard_context")),
+        terrain_context=_s(sections_raw.get("terrain_context")),
+        regional_vegetation_context=_s(sections_raw.get("regional_vegetation_context")),
+        limitations=_s(sections_raw.get("limitations")),
+    )
+
+    evidence = BaselineSynthesisEvidence(
+        california_scope_validation=_lst(evidence_raw.get("california_scope_validation")),
+        fire_hazard_context=_lst(evidence_raw.get("fire_hazard_context")),
+        terrain_context=_lst(evidence_raw.get("terrain_context")),
+        regional_vegetation_context=_lst(evidence_raw.get("regional_vegetation_context")),
+    )
 
     final_report = FinalBaselineReport(
-        tier="baseline_free_tier",
-        text=report_text,
-        sections={},
+        report_title=_s(synthesis_dict.get("report_title")) or "Baseline Wildfire Overview",
+        summary=_s(synthesis_dict.get("summary")),
+        sections=sections,
+        evidence_used=evidence,
     )
 
     orchestrator_result = BaselineOrchestratorResult(

@@ -372,7 +372,7 @@ def run_agent(
       - Plan is normalized and validated.
       - Tool arguments are derived and validated.
       - For Baseline (Free Tier): a rule-based executor/orchestrator runs tools via TOOL_REGISTRY,
-        then a separate synthesis LLM call generates the Baseline report.
+        then a separate synthesis LLM call generates a structured Baseline report JSON.
       - For Full (Paid Tier): the legacy executor and reporter pipeline is used.
 
     When address/lat/lng are provided (e.g. from Google Places UI), planner and executor use them;
@@ -458,7 +458,7 @@ def run_agent(
             tool_args = _fallback_tool_args(user_request, plan, address=address)
     args_ok, args_reasons = validate_tool_args(tool_args, plan=plan)
 
-    # Special-case Baseline (Free Tier): no validator LLM; only planner + synthesis LLM calls.
+    # Special-case Baseline (Free Tier): planner + deterministic tools + structured synthesis LLM.
     if plan.get("request_type") == "baseline_free_tier":
         if not args_ok:
             return {
@@ -483,7 +483,29 @@ def run_agent(
         status = baseline_result.get("status")
         execution = baseline_result.get("execution_summary") or {}
         final_report = baseline_result.get("final_report") or {}
-        final_text = str(final_report.get("text") or "").strip() or (
+
+        def _baseline_plaintext_from_report(report: Dict[str, Any]) -> str:
+            if not isinstance(report, dict):
+                return ""
+            parts = []
+            summary = report.get("summary")
+            if isinstance(summary, str) and summary.strip():
+                parts.append(summary.strip())
+            sections = report.get("sections") or {}
+            order = [
+                ("california_scope_validation", "California scope validation"),
+                ("fire_hazard_context", "Fire hazard context"),
+                ("terrain_context", "Terrain context"),
+                ("regional_vegetation_context", "Regional vegetation context"),
+                ("limitations", "Limitations"),
+            ]
+            for key, label in order:
+                text = sections.get(key)
+                if isinstance(text, str) and text.strip():
+                    parts.append(f"{label}: {text.strip()}")
+            return "\n\n".join(parts).strip()
+
+        final_text = _baseline_plaintext_from_report(final_report) or (
             "Baseline (Free Tier) California wildfire overview is ready."
         )
 

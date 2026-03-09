@@ -618,38 +618,100 @@ INDEX_HTML = """
         ? '<div class="result-section"><h4 class="result-section-title">What this is based on</h4><p class="result-text">' + contextBits.join('<br>') + '</p></div>'
         : '';
 
-      out.innerHTML =
+      var baselineWorkflow = data.baseline_workflow || null;
+      var baselineReport = baselineWorkflow && baselineWorkflow.final_report ? baselineWorkflow.final_report : null;
+      var isBaselineTier = tierRaw === 'baseline_free_tier';
+
+      var resultTitle = 'Assessment result';
+      if (isBaselineTier && baselineReport && baselineReport.report_title) {
+        resultTitle = baselineReport.report_title;
+      }
+
+      var headerHtml =
         '<div class="result-header">' +
           '<div>' +
             '<div class="pill pill-tier">' + escapeHtml(tierLabel) + '</div>' +
-            '<h3 class="result-title">Assessment result</h3>' +
+            '<h3 class="result-title">' + escapeHtml(resultTitle) + '</h3>' +
             '<p class="result-address">' + addressDisplay + '</p>' +
           '</div>' +
           '<div>' +
             '<div class="pill ' + statusClass + '">' + escapeHtml(statusLabel) + '</div>' +
           '</div>' +
-        '</div>' +
-        '<div class="result-grid">' +
-          '<div class="metric-card">' +
-            '<div class="metric-label">NDVI (vegetation index)</div>' +
-            '<div class="metric-value">' + ndviDisplay + '</div>' +
-            '<div class="metric-caption">' + ndviCaption + '</div>' +
-          '</div>' +
-          '<div class="metric-card">' +
-            '<div class="metric-label">Fuel class</div>' +
-            '<div class="metric-value">' + escapeHtml(fuel) + '</div>' +
-            '<div class="metric-caption">' + fuelCaption + '</div>' +
-          '</div>' +
-        '</div>' +
-        '<div class="result-section">' +
-          '<h4 class="result-section-title">Top actions and interpretation</h4>' +
-          '<p class="result-text">' + mainText + '</p>' +
-          '<p class="result-subtext">These recommendations are based on California-focused wildfire defensible-space guidance and the evidence listed below.</p>' +
-        '</div>' +
-        contextHtml +
+        '</div>';
+
+      var bodyHtml = '';
+
+      if (isBaselineTier && baselineReport) {
+        var sections = baselineReport.sections || {};
+
+        function sectionBlock(label, key) {
+          var text = sections[key] || '';
+          if (!text || !String(text).trim()) return '';
+          return (
+            '<div class="result-section">' +
+              '<h4 class="result-section-title">' + escapeHtml(label) + '</h4>' +
+              '<p class="result-text">' + escapeHtml(String(text)) + '</p>' +
+            '</div>'
+          );
+        }
+
+        var summaryText = baselineReport.summary || '';
+        if (summaryText && String(summaryText).trim()) {
+          bodyHtml +=
+            '<div class="result-section">' +
+              '<h4 class="result-section-title">Summary</h4>' +
+              '<p class="result-text">' + escapeHtml(String(summaryText)) + '</p>' +
+            '</div>';
+        }
+
+        bodyHtml += sectionBlock('California scope validation', 'california_scope_validation');
+        bodyHtml += sectionBlock('Fire hazard context', 'fire_hazard_context');
+        bodyHtml += sectionBlock('Terrain context', 'terrain_context');
+        bodyHtml += sectionBlock('Regional vegetation context', 'regional_vegetation_context');
+        bodyHtml += sectionBlock('Limitations', 'limitations');
+      } else {
+        var metricsHtml =
+          '<div class="result-grid">' +
+            '<div class="metric-card">' +
+              '<div class="metric-label">NDVI (vegetation index)</div>' +
+              '<div class="metric-value">' + ndviDisplay + '</div>' +
+              '<div class="metric-caption">' + ndviCaption + '</div>' +
+            '</div>' +
+            '<div class="metric-card">' +
+              '<div class="metric-label">Fuel class</div>' +
+              '<div class="metric-value">' + escapeHtml(fuel) + '</div>' +
+              '<div class="metric-caption">' + fuelCaption + '</div>' +
+            '</div>' +
+          '</div>';
+
+        var ndviMeta = (ex.evidence && ex.evidence.ndvi) || {};
+        var ndviThumbUrl = ndviMeta.thumb_url || null;
+        var ndviMapHtml = '';
+        if (ndviThumbUrl) {
+          ndviMapHtml =
+            '<div class="result-section">' +
+              '<h4 class="result-section-title">NDVI ring map</h4>' +
+              '<p class="result-text">Satellite-derived vegetation index (NDVI) around the address within the analysis buffer. Brighter colors usually indicate denser, greener vegetation that can act as wildfire fuel.</p>' +
+              '<img src="' + escapeHtml(String(ndviThumbUrl)) + '" alt="NDVI map" style="max-width:100%; border-radius:8px; border:1px solid var(--border); margin-top:0.5rem;" />' +
+            '</div>';
+        }
+
+        var actionsHtml =
+          '<div class="result-section">' +
+            '<h4 class="result-section-title">Top actions and interpretation</h4>' +
+            '<p class="result-text">' + mainText + '</p>' +
+            '<p class="result-subtext">These recommendations are based on California-focused wildfire defensible-space guidance and the evidence listed below.</p>' +
+          '</div>';
+
+        bodyHtml = metricsHtml + ndviMapHtml + actionsHtml + contextHtml;
+      }
+
+      var debugHtml =
         '<details class="result-details"><summary>View full structured output</summary><pre>' +
           escapeHtml(JSON.stringify(data, null, 2)) +
         '</pre></details>';
+
+      out.innerHTML = headerHtml + bodyHtml + debugHtml;
     });
 
     document.getElementById('run-plan').onclick = async function() {

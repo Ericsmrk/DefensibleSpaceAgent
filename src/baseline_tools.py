@@ -1,13 +1,12 @@
 from __future__ import annotations
 
 import json
-from typing import Any, Callable, Dict
+from typing import Any, Callable, Dict, List
 
 from .llm_client import LLMClient
 from .prompts import BASELINE_SYNTHESIS_SYSTEM
 from .schemas import (
     BaselineToolContext,
-    FinalBaselineReport,
     ToolResult,
 )
 from .tools import geocode_google
@@ -108,30 +107,41 @@ def validate_california_scope(context: BaselineToolContext) -> ToolResult:
         return ToolResult(
             tool_name="validate_california_scope",
             success=False,
-            data={"reason": "Missing coordinates; cannot validate California scope."},
+            data={
+                "in_california": False,
+                "reason": "Missing coordinates; cannot validate California scope.",
+            },
             sources=[],
             limitations=[
                 "California-only validation requires at least coarse coordinates.",
             ],
         )
 
-    state_code = (meta.get("state_code") or meta.get("state") or "").upper()
+    state = (meta.get("state") or "").strip() or None
+    state_code = (meta.get("state_code") or "").upper() or None
     in_box = _in_ca_bounds(lat, lng)
-    looks_ca = in_box and (not state_code or "CA" in state_code or "CALIFORNIA" in state_code)
+    looks_ca = in_box and (state_code in (None, "", "CA") or (state or "").upper() == "CALIFORNIA")
 
     county = meta.get("county")
     city = meta.get("city")
+    resolved_address = meta.get("formatted_address") or context.address
+
+    method = "coordinate_bounding_box"
+    if meta:
+        method = "geocoding_plus_bounding_box"
 
     data: Dict[str, Any] = {
-        "is_california": looks_ca,
-        "coordinates": {"lat": lat, "lng": lng},
-        "address": context.address,
-        "state_code": state_code or None,
+        "in_california": looks_ca,
+        "state": state,
+        "state_code": state_code,
         "county": county,
         "city": city,
+        "resolved_address": resolved_address,
+        "coordinates": {"lat": lat, "lng": lng},
+        "validation_method": method,
         "reason": "Location appears inside a coarse California bounding box."
         if looks_ca
-        else "Location appears to be outside California based on coarse bounds and/or metadata.",
+        else "Location appears to be outside California based on coarse bounds and/or basic metadata.",
     }
 
     limitations = [
@@ -143,8 +153,7 @@ def validate_california_scope(context: BaselineToolContext) -> ToolResult:
         tool_name="validate_california_scope",
         success=looks_ca,
         data=data,
-        sources=["coordinate_bounding_box_check"]
-        + (["google_geocoding"] if meta else []),
+        sources=["coordinate_bounding_box_check"] + (["google_geocoding"] if meta else []),
         limitations=limitations,
     )
 
@@ -161,7 +170,13 @@ def gather_hazard_context(context: BaselineToolContext) -> ToolResult:
         return ToolResult(
             tool_name="gather_hazard_context",
             success=False,
-            data={"summary": "No coordinates available; hazard context cannot be localized."},
+            data={
+                "summary": "No coordinates available; hazard context cannot be localized.",
+                "regional_wildfire_relevance": "unknown",
+                "hazard_region_name": None,
+                "nearby_context_summary": None,
+                "supported_notes": [],
+            },
             sources=[],
             limitations=[
                 "Hazard context requires at least approximate coordinates.",
@@ -169,29 +184,33 @@ def gather_hazard_context(context: BaselineToolContext) -> ToolResult:
         )
 
     summary = (
-        "Regional California wildfire hazard is generally elevated in many wildland-urban interface areas, "
-        "driven by seasonal dryness, accumulated fuels, and wind-driven fire spread. This Baseline overview "
-        "describes regional patterns only and does not assign a parcel-level hazard rating."
+        "Regional wildfire exposure is a concern in many parts of inland California where wildland fuels and "
+        "nearby communities overlap. This Baseline overview does not assign a parcel-level hazard rating."
     )
 
     data: Dict[str, Any] = {
         "summary": summary,
-        "notes": [
-            "Recent decades have seen frequent large wildfires across many parts of California.",
-            "Exposure is influenced by nearby wildland fuels, topography, and prevailing wind patterns.",
+        "regional_wildfire_relevance": "present",
+        "hazard_region_name": None,
+        "nearby_context_summary": (
+            "This build does not query official Fire Hazard Severity Zone maps or recent fire perimeters for this address."
+        ),
+        "supported_notes": [
+            "Large wildfires have occurred across many California regions in recent decades.",
+            "Local exposure depends on nearby wildland fuels, terrain, and wind patterns, which are only coarsely captured here.",
         ],
     }
 
     limitations = [
         "No parcel-level hazard map (e.g., official Fire Hazard Severity Zone) is integrated in this build.",
-        "Historical fire perimeter data is not queried in this Baseline implementation.",
+        "Historical fire perimeter or ignition data is not queried in this Baseline implementation.",
     ]
 
     return ToolResult(
         tool_name="gather_hazard_context",
         success=True,
         data=data,
-        sources=["regional_california_wildfire_patterns"],
+        sources=["general_california_wildfire_patterns"],
         limitations=limitations,
     )
 
@@ -204,12 +223,21 @@ def gather_terrain_context(context: BaselineToolContext) -> ToolResult:
     qualitative guidance tied to the presence of hills and slopes in general.
     """
     lat, lng = context.lat, context.lng
+    summary = (
+        "Terrain conditions such as slopes, ridges, and canyons can strongly influence fire spread, with fire "
+        "typically moving faster upslope and along aligned drainages. This Baseline overview does not compute "
+        "parcel-specific slope or aspect for the property."
+    )
+
     data: Dict[str, Any] = {
-        "summary": (
-            "Terrain conditions such as slopes, ridges, and canyons can strongly influence fire spread, with "
-            "fire typically moving faster upslope and along aligned drainages. This Baseline overview does not "
-            "compute parcel-specific slope or aspect for the property."
-        ),
+        "summary": summary,
+        "terrain_setting": None,
+        "elevation_ft": None,
+        "terrain_summary": summary,
+        "supported_notes": [
+            "Fire can accelerate upslope and follow drainages or aligned canyons.",
+            "Local slope and aspect for this specific parcel are not calculated in this Baseline build.",
+        ],
         "coordinates_used": {"lat": lat, "lng": lng} if lat is not None and lng is not None else None,
     }
 
@@ -235,19 +263,22 @@ def gather_regional_vegetation_context(context: BaselineToolContext) -> ToolResu
     """
     lat, lng = context.lat, context.lng
     summary = (
-        "Many parts of California feature a mix of grasses, shrubs, and forested areas that can act as "
-        "wildfire fuels. In wildland-urban interface settings, ornamental landscaping and unmanaged vegetation "
-        "can also contribute to ember exposure and flame contact. This Baseline overview only describes "
-        "typical regional vegetation patterns, not parcel-specific fuel conditions."
+        "Many parts of California feature grasses, shrubs, and forested areas that can act as wildfire fuels. "
+        "This Baseline overview describes typical regional vegetation patterns only, not parcel-specific fuel conditions."
     )
 
     data: Dict[str, Any] = {
         "summary": summary,
-        "coordinates_used": {"lat": lat, "lng": lng} if lat is not None and lng is not None else None,
-        "notes": [
-            "Fine fuels like dry grasses and leaf litter can ignite easily and carry fire quickly.",
-            "Shrubs and small trees can create ladder fuels that move fire into taller canopies.",
+        "vegetation_setting": None,
+        "dominant_patterns": None,
+        "land_cover_context": (
+            "This build does not query detailed land-cover or fuel-type datasets for this address."
+        ),
+        "supported_notes": [
+            "Fine fuels such as dry grasses and leaf litter can ignite easily and carry fire quickly.",
+            "Shrubs and small trees can act as ladder fuels between surface fuels and tree canopies.",
         ],
+        "coordinates_used": {"lat": lat, "lng": lng} if lat is not None and lng is not None else None,
     }
 
     limitations = [
@@ -271,7 +302,8 @@ def generate_baseline_report(
     """
     Synthesize the final Baseline report using an OpenAI call.
 
-    The synthesis strictly uses the structured tool outputs assembled in the context.
+    The synthesis strictly uses the structured tool outputs assembled in the context and
+    returns a structured JSON report that is easy for the UI to render.
     """
     # Prepare a compact view of tool outputs keyed by tool_name for the LLM.
     tools_payload: Dict[str, Any] = {}
@@ -286,48 +318,168 @@ def generate_baseline_report(
     user_payload = {
         "address": context.address,
         "coordinates": {"lat": context.lat, "lng": context.lng},
-        "plan": {
-            "request_type": context.execution_spec.request_type,
+        "planner_metadata": {
+            "tier": context.execution_spec.request_type,
             "assessment_mode": context.execution_spec.assessment_mode,
             "analysis_modules": context.execution_spec.analysis_modules,
         },
         "tool_outputs": tools_payload,
     }
 
-    serialized = json.dumps(user_payload, default=str, indent=2)
+    def _fallback_synthesis() -> Dict[str, Any]:
+        """Deterministic, cautious fallback when the LLM is unavailable or returns invalid JSON."""
 
+        addr = context.address or "this address"
+        v = tools_payload.get("validate_california_scope", {})
+        v_data = v.get("data") or {}
+        in_ca = bool(v_data.get("in_california"))
+        city = v_data.get("city")
+        county = v_data.get("county")
+
+        loc_bits: List[str] = []
+        if city:
+            loc_bits.append(str(city))
+        if county:
+            loc_bits.append(str(county))
+        if in_ca:
+            loc_bits.append("California")
+        loc_phrase = ", ".join(loc_bits) if loc_bits else "a location in California"
+
+        summary = (
+            f"This Baseline overview provides an address-level look at wildfire context for {addr}, "
+            f"with emphasis on California scope, regional hazard, terrain, and vegetation."
+        )
+
+        sections = {
+            "california_scope_validation": (
+                "Available information suggests this address is within California, based on coarse coordinate checks "
+                "and any geocoding metadata that may be available. This validation does not use official jurisdictional "
+                "or Fire Hazard Severity Zone designations."
+                if in_ca
+                else "The system cannot confidently confirm that this address is within California, so all other sections "
+                "should be treated as highly preliminary."
+            ),
+            "fire_hazard_context": (
+                "Large wildfires have affected many parts of California in recent decades, especially where wildland fuels "
+                "and communities overlap. Because this Baseline build does not query specific hazard layers for "
+                f"{loc_phrase}, it cannot provide a parcel-level hazard rating."
+            ),
+            "terrain_context": (
+                "Terrain such as slopes, ridges, and canyons can strongly influence fire spread, often allowing fire to move "
+                "faster upslope or along aligned drainages. This Baseline overview does not compute slope or aspect for the "
+                "specific property."
+            ),
+            "regional_vegetation_context": (
+                "Typical California vegetation patterns include grasses, shrubs, and forested areas that can act as wildfire fuels. "
+                "This Baseline result does not include a detailed fuel map for the property itself or its immediate surroundings."
+            ),
+            "limitations": (
+                "This is an address-level Baseline overview only. It does not include parcel-level hazard ratings, NDVI or fuel "
+                "classification, detailed terrain modeling, or vegetation proximity analysis. It should not be used as a substitute "
+                "for an engineered site-specific wildfire or defensible-space study."
+            ),
+        }
+
+        evidence_used = {
+            "california_scope_validation": [
+                "Coarse coordinate bounding-box check for California extent.",
+            ],
+            "fire_hazard_context": [
+                "General knowledge that many California regions have experienced large wildfires.",
+            ],
+            "terrain_context": [
+                "General fire behavior principles relating to slope and canyons.",
+            ],
+            "regional_vegetation_context": [
+                "General understanding of common California vegetation types and their role as wildfire fuels.",
+            ],
+        }
+
+        return {
+            "report_title": "Baseline Wildfire Overview",
+            "summary": summary,
+            "sections": sections,
+            "evidence_used": evidence_used,
+        }
+
+    serialized = json.dumps(user_payload, default=str, indent=2)
     user_message = (
         "You are synthesizing a California Baseline wildfire overview for one address.\n\n"
-        "Use ONLY the structured tool outputs provided below. Do not invent parcel-specific facts, "
-        "measurements, or hazard designations.\n\n"
+        "Use ONLY the structured tool outputs provided below.\n\n"
         "STRUCTURED_INPUT:\n"
         f"{serialized}\n"
     )
 
-    fallback_text = (
-        "Baseline California wildfire overview based on regional hazard, terrain, and vegetation context. "
-        "Detailed parcel-specific analyses (NDVI, fuel class, slope, proximity) are not included in this free tier."
-    )
-
     if not llm_client.is_configured():
-        report_text = fallback_text
+        synthesis = _fallback_synthesis()
     else:
-        report_text = llm_client.chat_text(
+        raw = llm_client.chat_json(
             BASELINE_SYNTHESIS_SYSTEM,
             user_message,
-            fallback=fallback_text,
+            fallback=_fallback_synthesis(),
         )
 
-    report = FinalBaselineReport(
-        tier="baseline_free_tier",
-        text=report_text,
-        sections={},
-    )
+        # Validate and coerce into the expected schema; fall back if structure is not usable.
+        base = _fallback_synthesis()
+        if not isinstance(raw, dict):
+            synthesis = base
+        else:
+            sections_raw = raw.get("sections") or {}
+            evidence_raw = raw.get("evidence_used") or {}
+
+            def _s(val: Any, default: str) -> str:
+                return str(val).strip() if isinstance(val, str) and val.strip() else default
+
+            def _lst(val: Any) -> List[str]:
+                if isinstance(val, list):
+                    return [str(x) for x in val if isinstance(x, str) and x.strip()]
+                return []
+
+            synthesis = {
+                "report_title": _s(raw.get("report_title"), base["report_title"]),
+                "summary": _s(raw.get("summary"), base["summary"]),
+                "sections": {
+                    "california_scope_validation": _s(
+                        sections_raw.get("california_scope_validation"),
+                        base["sections"]["california_scope_validation"],
+                    ),
+                    "fire_hazard_context": _s(
+                        sections_raw.get("fire_hazard_context"),
+                        base["sections"]["fire_hazard_context"],
+                    ),
+                    "terrain_context": _s(
+                        sections_raw.get("terrain_context"),
+                        base["sections"]["terrain_context"],
+                    ),
+                    "regional_vegetation_context": _s(
+                        sections_raw.get("regional_vegetation_context"),
+                        base["sections"]["regional_vegetation_context"],
+                    ),
+                    "limitations": _s(
+                        sections_raw.get("limitations"),
+                        base["sections"]["limitations"],
+                    ),
+                },
+                "evidence_used": {
+                    "california_scope_validation": _lst(
+                        evidence_raw.get("california_scope_validation")
+                    )
+                    or base["evidence_used"]["california_scope_validation"],
+                    "fire_hazard_context": _lst(evidence_raw.get("fire_hazard_context"))
+                    or base["evidence_used"]["fire_hazard_context"],
+                    "terrain_context": _lst(evidence_raw.get("terrain_context"))
+                    or base["evidence_used"]["terrain_context"],
+                    "regional_vegetation_context": _lst(
+                        evidence_raw.get("regional_vegetation_context")
+                    )
+                    or base["evidence_used"]["regional_vegetation_context"],
+                },
+            }
 
     return ToolResult(
         tool_name="generate_baseline_report",
         success=True,
-        data={"report_text": report.text},
+        data=synthesis,
         sources=["openai_chat_completion"] if llm_client.is_configured() else [],
         limitations=[
             "This Baseline report is intentionally limited to address-level regional context.",
