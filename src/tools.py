@@ -51,7 +51,7 @@ def classify_fuel(ndvi: Optional[float]) -> str:
         return "Sparse Vegetation"
     return "Minimal Vegetation"
 
-
+#Remove later...
 def _mock_geocode(address: str) -> Tuple[float, float, dict]:
     known = {
         "17825 Woodcrest Dr, Pioneer, Ca": (38.4655752, -120.5584229),
