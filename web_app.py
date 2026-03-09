@@ -1,13 +1,16 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 from dotenv import load_dotenv
 load_dotenv()
 
 from flask import Flask, jsonify, render_template_string, request, Response
 
-from src.agent import run_agent, run_planner_only
+logger = logging.getLogger(__name__)
+
+from src.agent import run_agent, run_planner_only, normalize_plan_for_provided_coordinates
 from src.llm_client import LLMClient
 from src.tools import geocode_google
 
@@ -478,10 +481,15 @@ INDEX_HTML = """
       var planOut = document.getElementById('plan-out');
       planOut.style.display = 'block';
       planOut.innerHTML = '<p class="muted">Running planner...</p>';
+      var payload = { address: address };
+      if (hiddenLat.value && hiddenLng.value) {
+        payload.lat = hiddenLat.value.trim();
+        payload.lng = hiddenLng.value.trim();
+      }
       var r = await fetch('/api/plan', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ address: address })
+        body: JSON.stringify(payload)
       });
       var data = await r.json();
       if (!r.ok) {
@@ -597,14 +605,19 @@ def plan():
     address = (payload.get("address") or "").strip()
     if not address:
         return jsonify({"error": "address is required"}), 400
+    lat = _parse_float(payload.get("lat"))
+    lng = _parse_float(payload.get("lng"))
+    has_coords = lat is not None and lng is not None
     planner_context = {
         "user_request": f"Assess wildfire risk for {address}",
         "provided_address": address,
-        "provided_coordinates": None,
-        "source": "address_only",
+        "provided_coordinates": {"lat": lat, "lng": lng} if has_coords else None,
+        "source": "google_places_selection" if has_coords else "address_only",
     }
     try:
         plan_result = run_planner_only(json.dumps(planner_context))
+        if has_coords:
+            plan_result = normalize_plan_for_provided_coordinates(plan_result)
         response_text = plan_result.get("planner_summary") or (
             "Planner produced a structured plan. Run a full assessment to execute it."
         )
@@ -654,6 +667,14 @@ def assess():
     address = (payload.get("address") or "").strip() or None
     lat = _parse_float(payload.get("lat"))
     lng = _parse_float(payload.get("lng"))
+    # Debug: log incoming body so we can verify UI sends address/lat/lng when place is selected
+    logger.info(
+        "assess request: request=%r address=%r lat=%s lng=%s",
+        user_request[:80] if user_request else None,
+        address,
+        lat if lat is not None else "None",
+        lng if lng is not None else "None",
+    )
     result = run_agent(user_request, address=address, lat=lat, lng=lng)
     return jsonify(result)
 

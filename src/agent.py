@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import json
+import logging
 from typing import Any, Dict, Optional
 
 from .llm_client import LLMClient
+
+logger = logging.getLogger(__name__)
 from .prompts import GENERATOR_SYSTEM, PLANNER_SYSTEM, REPORTER_SYSTEM, VALIDATOR_SYSTEM
 from .tools import classify_fuel, compute_mean_ndvi, geocode_google
 from .validators import validate_coordinates, validate_plan, validate_tool_args
@@ -34,6 +37,40 @@ def _planner_context(
     elif address:
         out["source"] = "address_only"
     return out
+
+
+def _normalize_plan_for_provided_coordinates(plan: Dict[str, Any]) -> Dict[str, Any]:
+    """When coordinates were provided, force plan to use them and remove geocode step."""
+    plan = dict(plan)
+    plan["location_strategy"] = {"use_provided_coordinates": True, "needs_geocoding": False}
+    steps = list(plan.get("steps") or [])
+    # Remove geocode_google steps and renumber; drop dependencies on removed steps
+    steps = [dict(s) for s in steps if isinstance(s, dict) and s.get("tool") != "geocode_google"]
+    old_to_new: Dict[int, int] = {}
+    for i, s in enumerate(steps, start=1):
+        old_id = s.get("step_id")
+        if old_id is not None:
+            old_to_new[int(old_id)] = i
+        s["step_id"] = i
+    for s in steps:
+        dep = s.get("depends_on")
+        if isinstance(dep, list):
+            # Only keep dependencies that still exist (point to non-removed steps)
+            s["depends_on"] = [old_to_new[int(d)] for d in dep if d is not None and int(d) in old_to_new]
+    plan["steps"] = steps
+    # Drop "geocode" from analysis_modules when using provided coordinates
+    modules = list(plan.get("analysis_modules") or [])
+    if "geocode" in modules:
+        plan["analysis_modules"] = [m for m in modules if m != "geocode"]
+    summary = plan.get("planner_summary") or ""
+    if "geocod" in summary.lower():
+        plan["planner_summary"] = "Plan ready using provided coordinates; no geocoding needed."
+    return plan
+
+
+def normalize_plan_for_provided_coordinates(plan: Dict[str, Any]) -> Dict[str, Any]:
+    """Public entry point for normalizing a plan when coordinates were provided (e.g. from /api/plan)."""
+    return _normalize_plan_for_provided_coordinates(plan)
 
 
 def _parse_planner_context(prompt: str) -> Dict[str, Any]:
@@ -205,8 +242,25 @@ def run_agent(
     context = _planner_context(user_request, address=address, lat=provided_lat, lng=provided_lng)
     planner_user = json.dumps(context) if not (planner_prompt or "").strip() else planner_prompt.strip()
 
+    # Debug: log planner payload so we can verify provided_coordinates when lat/lng are available
+    logger.info(
+        "planner payload: %s",
+        json.dumps({k: v for k, v in context.items()}, default=str),
+    )
+
     # 1. Planner emits structured execution spec (location-aware)
     plan = run_planner_only(planner_user, model=model)
+
+    # When we have provided coordinates, normalize plan so location_strategy and steps are consistent
+    # (LLM may still output use_provided_coordinates=false; we override to match reality)
+    if provided_lat is not None and provided_lng is not None:
+        plan = _normalize_plan_for_provided_coordinates(plan)
+
+    logger.info(
+        "planner output location_strategy: %s",
+        plan.get("location_strategy"),
+    )
+
     plan_ok, plan_reasons = validate_plan(plan, provided_lat=provided_lat, provided_lng=provided_lng)
 
     execution_ready = plan.get("execution_ready") is True
