@@ -234,6 +234,8 @@ INDEX_HTML = """
       border: 1px solid var(--border);
     }
     .planner-response strong { color: var(--accent); font-weight: 600; }
+    .planner-response .planner-next-steps-header { color: var(--accent); font-weight: 600; }
+    .planner-response .planner-next-steps-choice { color: #ffffff; }
   </style>
 </head>
 <body>
@@ -294,6 +296,11 @@ INDEX_HTML = """
         return lines.map(function(line) {
           var escaped = escapeHtml(line);
           var t = line.trim();
+          var isNextStepsHeader = t.indexOf('Possible Next Steps') >= 0 && t.endsWith(':');
+          var numMatch = t.match(/^(\\d+)\\./);
+          var isChoice = numMatch && (numMatch[1] >= 1 && numMatch[1] <= 12);
+          if (isNextStepsHeader) return '<span class="planner-next-steps-header">' + escaped + '</span>';
+          if (isChoice) return '<span class="planner-next-steps-choice">' + escaped + '</span>';
           var isHeader = t.length > 0 && t.length < 60 && t.endsWith(':');
           var isNumbered = t.length > 2 && t.charAt(0) >= '1' && t.charAt(0) <= '9' && t.charAt(1) === '.';
           if (isHeader || isNumbered) return '<strong>' + escaped + '</strong>';
