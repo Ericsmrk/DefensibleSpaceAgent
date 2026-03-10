@@ -178,7 +178,6 @@ A more complete documentation of the repository layout and code roles is in `doc
 
 - `web_app.py` – Flask app, UI template, and HTTP API endpoints.
 - `index.html` – optional static frontend (for GitHub Pages / static hosting), wired to the same API shape.
-- `demo.py` – CLI wrapper that calls `run_agent` on example prompts.
 - `src/`:
   - `agent.py` – main structured agent pipeline (planner, validators, Baseline/Full executors, reporters).
   - `baseline_tools.py` – Baseline tier tools (location resolution, California scope check, hazard, terrain, vegetation, and Baseline report synthesis).
@@ -330,15 +329,9 @@ Then open **http://localhost:8000** in your browser.
 - Click **Run planner** to view the planner’s explanation and execution spec.
 - Click **Analyze Fire Risk** to run the full agent pipeline and see structured results.
 
-#### 7.5 Run the CLI examples
+**Demo:** To try the app, run `python web_app.py` locally (see above) or use the Render live deployment when available.
 
-```bash
-python demo.py
-```
-
-This script runs `run_agent` against several example requests and prints the full structured JSON outputs.
-
-#### 7.6 Run tests
+#### 7.5 Run tests
 
 ```bash
 pytest
@@ -346,7 +339,7 @@ pytest
 
 See `docs/testing_and_validation_v1.md` for a detailed overview of testing and validation in Version One.
 
-#### 7.7 Troubleshooting (quickstart)
+#### 7.6 Troubleshooting (quickstart)
 
 - **401 Unauthorized:** Ensure `.env` has no quotes around `OPENAI_API_KEY` (e.g. `OPENAI_API_KEY=sk-proj-...` not `"sk-proj-..."`). Restart the app after editing `.env`.
 - **Run from project root:** Always `cd` to the folder that contains `web_app.py` and `.env` before running `python web_app.py`.

@@ -11,8 +11,7 @@
 - **Domain:** Wildfire defensible-space assessment (California-focused).
 - **Stack:** Python 3, Flask, OpenAI API (GPT), optional Google Maps/Geocoding.
 - **Entry points:** Run from project root (folder containing `web_app.py` and `.env`).
-  - **Web:** `python web_app.py` → `http://localhost:8000`
-  - **CLI:** `python demo.py` (runs `run_agent()` on example requests)
+  - **Web:** `python web_app.py` → `http://localhost:8000` (or use the Render live deployment)
 - **Setup:** Create venv, activate, `pip install -r requirements.txt`. Copy `.env.example` to `.env`, set `OPENAI_API_KEY` and `GOOGLE_MAPS_KEY` (no quotes). For NDVI: run `earthengine authenticate` (or `.\.venv\Scripts\earthengine.exe authenticate` on Windows), then set `EARTHENGINE_PROJECT=your-gcp-project-id` in `.env` (Google Cloud project with Earth Engine API enabled).
 
 ---
@@ -22,7 +21,6 @@
 ```
 DefensibleSpaceAgent/
 ├── web_app.py              # Flask app: UI + API routes
-├── demo.py                 # CLI: runs run_agent() on example strings
 ├── requirements.txt        # flask, python-dotenv, pytest, earthengine-api
 ├── .env.example            # OPENAI_API_KEY, GOOGLE_MAPS_KEY, optional EARTHENGINE_PROJECT (copy to .env)
 ├── src/
