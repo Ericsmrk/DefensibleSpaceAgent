@@ -1,4 +1,5 @@
 % ClearSafe California – Defensible Space Agent (Version One)
+% Eric Smrkovsky
 % Course Project Report (Agentic AI / Systems)
 % March 2026
 
@@ -87,6 +88,8 @@ When `GOOGLE_MAPS_KEY` is configured, the system calls Google’s Geocoding API 
 
 ### 5.3 Google Earth Engine (Sentinel‑2 NDVI)
 When `earthengine-api` is installed and Earth Engine is authenticated, the Full tier computes mean NDVI around the property coordinate using Sentinel‑2 surface reflectance imagery, with configurable date window and cloud threshold. The tool can also generate a thumbnail URL for visualization in the UI.
+
+**Known deployment issue (Render):** The current Render deployment has a **bug in Earth Engine initialization**, so NDVI may appear as “Not available” in the live app even when `EARTHENGINE_PROJECT` is set. Local runs may still succeed after authenticating Earth Engine.
 
 ### 5.4 Internal “tools” and placeholders
 Some analysis modules are implemented as explicit placeholders (returning “Not available in this build”) to keep the execution spec stable while clearly distinguishing future work:

@@ -1,0 +1,102 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900">
+  <defs>
+    <style>
+      .bg { fill: #0b1220; }
+      .title { font: 700 34px "Segoe UI", Arial, sans-serif; fill: #e6edf3; }
+      .muted { font: 400 16px "Segoe UI", Arial, sans-serif; fill: #94a3b8; }
+      .panel { fill: #0f1b2d; stroke: #2a3a55; stroke-width: 2; rx: 18; }
+      .box { fill: #0d1117; stroke: #334155; stroke-width: 2; rx: 14; }
+      .h { font: 700 20px "Segoe UI", Arial, sans-serif; fill: #e6edf3; }
+      .t { font: 400 17px "Segoe UI", Arial, sans-serif; fill: #cbd5e1; }
+      .chip { fill: #f97316; opacity: 0.18; stroke: #f97316; stroke-width: 2; rx: 999; }
+      .chipText { font: 700 13px "Segoe UI", Arial, sans-serif; fill: #fdba74; letter-spacing: 1px; }
+      .ok { fill: #22c55e; opacity: 0.15; stroke: #22c55e; stroke-width: 2; rx: 12; }
+      .warn { fill: #f59e0b; opacity: 0.12; stroke: #f59e0b; stroke-width: 2; rx: 12; }
+      .bad { fill: #ef4444; opacity: 0.12; stroke: #ef4444; stroke-width: 2; rx: 12; }
+      .arrow { stroke: #94a3b8; stroke-width: 3; fill: none; marker-end: url(#m); }
+    </style>
+    <marker id="m" markerWidth="10" markerHeight="10" refX="7" refY="3" orient="auto">
+      <path d="M0,0 L8,3 L0,6 z" fill="#94a3b8"/>
+    </marker>
+  </defs>
+
+  <rect class="bg" x="0" y="0" width="1600" height="900"/>
+  <text class="title" x="70" y="78">Tools, APIs, and Validation (v1)  how execution stays constrained</text>
+  <text class="muted" x="70" y="112">Everything below is present in the current repo; official hazard layers and parcel analytics are explicitly NOT integrated in v1.</text>
+
+  <!-- External APIs -->
+  <rect class="panel" x="70" y="150" width="470" height="680" rx="18"/>
+  <rect class="chip" x="95" y="175" width="220" height="34" rx="999"/>
+  <text class="chipText" x="112" y="198">EXTERNAL SERVICES</text>
+
+  <rect class="box" x="95" y="230" width="420" height="165" rx="14"/>
+  <text class="h" x="120" y="270">OpenAI Chat Completions</text>
+  <text class="t" x="120" y="300">src/llm_client.py (chat_json / chat_text)</text>
+  <text class="t" x="120" y="332">Used by: planner, Baseline synthesis,</text>
+  <text class="t" x="120" y="360">CAL FIRE recommendations, narrative generation</text>
+
+  <rect class="box" x="95" y="420" width="420" height="170" rx="14"/>
+  <text class="h" x="120" y="460">Google Geocoding API</text>
+  <text class="t" x="120" y="490">src/tools.py: geocode_google(address)</text>
+  <text class="t" x="120" y="522">Requires: GOOGLE_MAPS_KEY</text>
+  <text class="t" x="120" y="552">Returns: coords + state/county/city metadata</text>
+
+  <rect class="box" x="95" y="615" width="420" height="190" rx="14"/>
+  <text class="h" x="120" y="655">Google Earth Engine (NDVI)</text>
+  <text class="t" x="120" y="685">src/tools.py: compute_mean_ndvi(lat, lon, ...)</text>
+  <text class="t" x="120" y="715">Optional: earthengine-api + authentication</text>
+  <text class="t" x="120" y="745">Returns: mean NDVI + metadata + thumb_url (if available)</text>
+
+  <!-- Validation / guardrails -->
+  <rect class="panel" x="570" y="150" width="500" height="680" rx="18"/>
+  <rect class="chip" x="595" y="175" width="240" height="34" rx="999"/>
+  <text class="chipText" x="612" y="198">GUARDRAILS</text>
+
+  <rect class="ok" x="595" y="230" width="450" height="160" rx="14"/>
+  <text class="h" x="620" y="270">Plan validation (strict)</text>
+  <text class="t" x="620" y="300">src/validators.py: validate_plan</text>
+  <text class="t" x="620" y="332">- whitelisted tools/modules</text>
+  <text class="t" x="620" y="360">- step ordering + dependencies</text>
+  <text class="t" x="620" y="388">- tier-specific tool constraints</text>
+
+  <rect class="ok" x="595" y="415" width="450" height="150" rx="14"/>
+  <text class="h" x="620" y="455">Tool-arg validation</text>
+  <text class="t" x="620" y="485">src/validators.py: validate_tool_args</text>
+  <text class="t" x="620" y="517">Ranges: buffer_m 1..500, cloud_pct 0..100</text>
+  <text class="t" x="620" y="545">NDVI window required when NDVI step is present</text>
+
+  <rect class="warn" x="595" y="590" width="450" height="220" rx="14"/>
+  <text class="h" x="620" y="630">California-only enforcement</text>
+  <text class="t" x="620" y="660">- Baseline: bounding box + geocode state metadata</text>
+  <text class="t" x="620" y="690">- Full: bounding box safety check during execution</text>
+  <text class="t" x="620" y="720">Explicitly NOT used in v1:</text>
+  <text class="t" x="620" y="748">- official FHSZ / CAL FIRE hazard labels</text>
+  <text class="t" x="620" y="776">- parcel boundaries or official jurisdiction layers</text>
+
+  <!-- Execution artifacts -->
+  <rect class="panel" x="1110" y="150" width="420" height="680" rx="18"/>
+  <rect class="chip" x="1135" y="175" width="260" height="34" rx="999"/>
+  <text class="chipText" x="1152" y="198">EXECUTION ARTIFACTS</text>
+
+  <rect class="box" x="1135" y="230" width="370" height="170" rx="14"/>
+  <text class="h" x="1160" y="270">Evidence metadata</text>
+  <text class="t" x="1160" y="300">execution.evidence.geocode / ndvi</text>
+  <text class="t" x="1160" y="332">Clear unavailable/disabled/skipped reasons</text>
+  <text class="t" x="1160" y="360">Supports transparent UI rendering</text>
+
+  <rect class="box" x="1135" y="430" width="370" height="185" rx="14"/>
+  <text class="h" x="1160" y="470">Placeholders (explicit)</text>
+  <text class="t" x="1160" y="500">property_slope: Not available in this build</text>
+  <text class="t" x="1160" y="530">vegetation_proximity: Not available in this build</text>
+  <text class="t" x="1160" y="560">photo_analysis: placeholder only when requested</text>
+
+  <rect class="box" x="1135" y="645" width="370" height="160" rx="14"/>
+  <text class="h" x="1160" y="685">Outputs are structured</text>
+  <text class="t" x="1160" y="715">plan + tool_args + validation + execution</text>
+  <text class="t" x="1160" y="745">final_response narrative (or Baseline sections)</text>
+
+  <!-- arrows -->
+  <path class="arrow" d="M540 335 C 560 335, 570 335, 595 335"/>
+  <path class="arrow" d="M1045 490 C 1080 490, 1095 490, 1135 490"/>
+</svg>
+

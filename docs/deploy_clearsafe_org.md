@@ -1,4 +1,4 @@
-# Deploying to `clearsafe.org`
+# Deployment (Render) + planned custom domain (`clearsafeca.org`)
 
 This repo now includes a Flask web app (`web_app.py`) that can be hosted and attached to your custom domain.
 
@@ -30,28 +30,35 @@ Without them, app still runs using deterministic fallback logic; NDVI will be un
 - Set `OPENAI_API_KEY` and `GOOGLE_MAPS_KEY` only in your hosting provider environment-variable settings.
 - If using GitHub Pages as frontend, keep all key usage on backend only (`/api/assess`), not in browser JS.
 
-## 3) Add custom domain
+## 3) Live deployment URL (current)
+
+- Render deployment: `https://defensiblespaceagent.onrender.com/`
+
+## 4) Add custom domain (planned next step)
 In Render service settings:
-- Add custom domain `clearsafe.org`
-- Add custom domain `www.clearsafe.org`
+- Add custom domain `clearsafeca.org`
+- Add custom domain `www.clearsafeca.org`
 
 Render will provide DNS targets.
 
-## 4) Configure DNS at your domain registrar
-At your DNS provider (where `clearsafe.org` is managed):
+## 5) Configure DNS at your domain registrar
+At your DNS provider (where `clearsafeca.org` is managed):
 - Add record(s) exactly as instructed by Render.
 - Typical pattern:
   - `www` -> CNAME to your Render domain
   - apex/root `@` -> A/ALIAS per Render guidance
 
-## 5) Verify TLS + propagation
+## 6) Verify TLS + propagation
 - Wait for DNS propagation.
-- Confirm `https://clearsafe.org/` loads.
-- Confirm API endpoint: `https://clearsafe.org/healthz` returns `{ "ok": true }`.
+- Confirm `https://clearsafeca.org/` loads.
+- Confirm API endpoint: `https://clearsafeca.org/healthz` returns `{ "ok": true }`.
 
-## 6) Smoke test
+## 7) Smoke test
 - Visit homepage and run one assessment.
 - Confirm JSON and recommendation render.
+
+## Known issue (Render deployment)
+- Earth Engine initialization is currently **buggy in the Render deployment environment**, so Full-tier NDVI may show as “Not available” even when `EARTHENGINE_PROJECT` is set. Local runs may still work after `earthengine authenticate`.
 
 ## Notes
 I cannot directly log into your registrar/hosting account from this environment, but the repo is now prepared so you can complete deployment quickly.

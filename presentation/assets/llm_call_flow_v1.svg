@@ -1,0 +1,100 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900">
+  <defs>
+    <style>
+      .bg { fill: #0b1220; }
+      .title { font: 700 34px "Segoe UI", Arial, sans-serif; fill: #e6edf3; }
+      .muted { font: 400 16px "Segoe UI", Arial, sans-serif; fill: #94a3b8; }
+      .box { fill: #0d1117; stroke: #334155; stroke-width: 2; rx: 14; }
+      .box2 { fill: #0f1b2d; stroke: #2a3a55; stroke-width: 2; rx: 14; }
+      .h { font: 700 20px "Segoe UI", Arial, sans-serif; fill: #e6edf3; }
+      .t { font: 400 17px "Segoe UI", Arial, sans-serif; fill: #cbd5e1; }
+      .tag { fill: #f97316; opacity: 0.18; stroke: #f97316; stroke-width: 2; rx: 999; }
+      .tagText { font: 700 13px "Segoe UI", Arial, sans-serif; fill: #fdba74; letter-spacing: 1px; }
+      .arrow { stroke: #94a3b8; stroke-width: 3; fill: none; marker-end: url(#m); }
+      .arrowO { stroke: #f97316; stroke-width: 3; fill: none; marker-end: url(#mO); }
+      .note { font: 400 14px "Segoe UI", Arial, sans-serif; fill: #a3b4cc; }
+    </style>
+    <marker id="m" markerWidth="10" markerHeight="10" refX="7" refY="3" orient="auto">
+      <path d="M0,0 L8,3 L0,6 z" fill="#94a3b8"/>
+    </marker>
+    <marker id="mO" markerWidth="10" markerHeight="10" refX="7" refY="3" orient="auto">
+      <path d="M0,0 L8,3 L0,6 z" fill="#f97316"/>
+    </marker>
+  </defs>
+
+  <rect class="bg" x="0" y="0" width="1600" height="900"/>
+  <text class="title" x="70" y="78">Multi-LLM Call Flow (v1)  roles + intermediate representations</text>
+  <text class="muted" x="70" y="112">Planner/Validator/Generator calls are mediated by src/llm_client.py with fallbacks when keys are missing.</text>
+
+  <!-- Planner -->
+  <rect class="box" x="70" y="165" width="460" height="160" rx="16"/>
+  <rect class="tag" x="96" y="190" width="170" height="28" rx="999"/>
+  <text class="tagText" x="109" y="210">LLM CALL 1</text>
+  <text class="h" x="96" y="250">Planner ’ execution spec JSON</text>
+  <text class="t" x="96" y="278">Outputs: request_type, steps[], constraints, summaries</text>
+  <text class="note" x="96" y="306">Fallback: deterministic _fallback_execution_spec (CA-only, tiered)</text>
+
+  <!-- Normalize/validate -->
+  <rect class="box2" x="580" y="165" width="420" height="160" rx="16"/>
+  <rect class="tag" x="606" y="190" width="210" height="28" rx="999"/>
+  <text class="tagText" x="619" y="210">LOCAL CHECKS</text>
+  <text class="h" x="606" y="250">Normalize + validate</text>
+  <text class="t" x="606" y="278">Whitelisted tools/modules, step invariants, tier rules</text>
+  <text class="note" x="606" y="306">Blocks execution early with explicit reasons</text>
+
+  <!-- Tool args derivation -->
+  <rect class="box2" x="1040" y="165" width="490" height="160" rx="16"/>
+  <rect class="tag" x="1066" y="190" width="240" height="28" rx="999"/>
+  <text class="tagText" x="1079" y="210">DETERMINISTIC</text>
+  <text class="h" x="1066" y="250">Derive + validate tool_args</text>
+  <text class="t" x="1066" y="278">address, buffer_m, date_window, cloud_pct</text>
+  <text class="note" x="1066" y="306">Fallback: salvage address from request (when needed)</text>
+
+  <!-- arrows -->
+  <path class="arrow" d="M530 245 L580 245"/>
+  <path class="arrow" d="M1000 245 L1040 245"/>
+
+  <!-- Baseline branch -->
+  <rect class="box" x="70" y="385" width="700" height="210" rx="18"/>
+  <rect class="tag" x="96" y="410" width="280" height="28" rx="999"/>
+  <text class="tagText" x="109" y="430">BASELINE BRANCH</text>
+  <text class="h" x="96" y="470">Tools ’ Baseline synthesis report (JSON)</text>
+  <text class="t" x="96" y="500">Baseline executor runs TOOL_REGISTRY steps (location/CA/hazard/terrain/veg)</text>
+  <text class="t" x="96" y="530">Then calls BASELINE_SYNTHESIS_SYSTEM for a structured report JSON</text>
+  <text class="note" x="96" y="560">If LLM unavailable: deterministic fallback report sections</text>
+
+  <!-- Full branch -->
+  <rect class="box" x="830" y="385" width="700" height="210" rx="18"/>
+  <rect class="tag" x="856" y="410" width="250" height="28" rx="999"/>
+  <text class="tagText" x="869" y="430">FULL BRANCH</text>
+  <text class="h" x="856" y="470">Tools + recommendations (JSON) + narrative (text)</text>
+  <text class="t" x="856" y="500">Step loop executes tools (geocode/NDVI/fuel + placeholders)</text>
+  <text class="t" x="856" y="530">CALFIRE_RECOMMENDATION_SYSTEM ’ structured mitigation JSON (repair attempt)</text>
+  <text class="t" x="856" y="560">GENERATOR_SYSTEM ’ homeowner narrative text</text>
+
+  <!-- LLM call tags inside branches -->
+  <rect class="tag" x="96" y="600" width="170" height="28" rx="999"/>
+  <text class="tagText" x="109" y="620">LLM CALL 2</text>
+  <text class="note" x="280" y="620">Baseline synthesis (JSON)</text>
+
+  <rect class="tag" x="856" y="600" width="170" height="28" rx="999"/>
+  <text class="tagText" x="869" y="620">LLM CALL 23</text>
+  <text class="note" x="1055" y="620">CAL FIRE recommendations (JSON) + narrative (text)</text>
+
+  <!-- Optional validator LLM -->
+  <rect class="box2" x="580" y="650" width="950" height="140" rx="18"/>
+  <rect class="tag" x="606" y="675" width="260" height="28" rx="999"/>
+  <text class="tagText" x="619" y="695">OPTIONAL LLM CHECK</text>
+  <text class="h" x="606" y="735">Validator LLM (non-Baseline flows)</text>
+  <text class="t" x="606" y="763">Small approval gate; may be skipped when request time budget is low</text>
+
+  <!-- connectors -->
+  <path class="arrowO" d="M1285 325 C 1285 355, 420 355, 420 385"/>
+  <path class="arrowO" d="M1285 325 C 1285 355, 1180 355, 1180 385"/>
+  <path class="arrow" d="M790 595 C 790 635, 790 650, 790 650"/>
+  <path class="arrow" d="M830 595 C 830 635, 830 650, 830 650"/>
+
+  <!-- Footer -->
+  <text class="muted" x="70" y="860">Key idea: LLMs produce structured JSON at critical boundaries; local validators enforce invariants before tools execute.</text>
+</svg>
+

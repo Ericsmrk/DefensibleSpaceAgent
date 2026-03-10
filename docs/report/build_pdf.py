@@ -333,7 +333,7 @@ def build_pdf() -> Path:
         topMargin=0.85 * inch,
         bottomMargin=0.85 * inch,
         title="ClearSafe California – Defensible Space Agent (Version One)",
-        author="DefensibleSpaceAgent repository",
+        author="Eric Smrkovsky",
     )
 
     blocks = _parse_markdown(_read_text(REPORT_MD))
@@ -473,7 +473,7 @@ def _page(canvas, doc):
     canvas.saveState()
     canvas.setFont("Helvetica", 9)
     canvas.setFillColor(colors.HexColor("#64748b"))
-    canvas.drawString(doc.leftMargin, 0.55 * inch, "ClearSafe California – Defensible Space Agent (v1) · Course report")
+    canvas.drawString(doc.leftMargin, 0.55 * inch, "ClearSafe California – Defensible Space Agent (v1) · Eric Smrkovsky · Course report")
     canvas.drawRightString(doc.pagesize[0] - doc.rightMargin, 0.55 * inch, f"Page {doc.page}")
     canvas.restoreState()
 

@@ -6,6 +6,7 @@ Structured, multi‑LLM + tools prototype for **California‑only wildfire defen
 
 - **Project name**: ClearSafe California – Defensible Space Agent  
 - **Version**: **Version One (v1)** – current implementation baseline  
+- **Author**: **Eric Smrkovsky**
 - **Domain**: California wildfire defensible‑space / wildfire property assessment  
 - **Primary audience**:
   - Homeowners and residents seeking clearer wildfire/defensible‑space guidance in California
@@ -329,7 +330,11 @@ Then open **http://localhost:8000** in your browser.
 - Click **Run planner** to view the planner’s explanation and execution spec.
 - Click **Analyze Fire Risk** to run the full agent pipeline and see structured results.
 
-**Demo:** To try the app, run `python web_app.py` locally (see above) or use the Render live deployment when available.
+**Demo (live deployment):** `https://defensiblespaceagent.onrender.com/`
+
+**Planned next step (deployment):** attach the Render service to the custom domain **`clearsafeca.org`** (owned by the ClearSafeCA non-profit).
+
+To try the app locally, run `python web_app.py` (see above).
 
 #### 7.5 Run tests
 
@@ -345,6 +350,7 @@ See `docs/testing_and_validation_v1.md` for a detailed overview of testing and v
 - **Run from project root:** Always `cd` to the folder that contains `web_app.py` and `.env` before running `python web_app.py`.
 - **Windows venv:** Use `& .\.venv\Scripts\Activate.ps1` to activate; confirm `(.venv)` in the prompt before `pip install`. If install fails with WinError 2, close other terminals and try again with venv active.
 - **Earth Engine / NDVI:** Run `.\.venv\Scripts\earthengine.exe authenticate` (Windows) or `earthengine authenticate` (Linux/macOS with venv active). Then set `EARTHENGINE_PROJECT=your-gcp-project-id` in `.env` (create a Google Cloud project and enable Earth Engine API first). Restart the app.
+- **Known issue (Render deployment):** Earth Engine initialization is currently **buggy in the Render deployment environment**, so Full-tier NDVI may show as “Not available” even when `EARTHENGINE_PROJECT` is set. Local runs may still work normally after `earthengine authenticate`. This is a deployment bug to be fixed.
 - **"Analyze Fire Risk" returns "Request failed" (e.g. on Render):** The UI now shows the server error message when the request fails. Common causes: (1) **Request timeout** – the full assessment does multiple LLM and tool calls; on Render free tier the default request timeout may be 30s. Increase the request timeout in your Render service settings if needed. (2) **Missing env vars** – ensure `OPENAI_API_KEY` and, if you use geocoding, `GOOGLE_MAPS_KEY` are set in the Render environment. Check the Render logs and the on-screen error for the exact message.
 
 ### 8. Documentation index (Version One)
