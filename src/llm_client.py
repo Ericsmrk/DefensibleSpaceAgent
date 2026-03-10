@@ -20,6 +20,16 @@ class LLMClient:
     def __init__(self, model: str = "gpt-4o-mini"):
         self.model = model
         self.api_key = _normalize_api_key(os.getenv("OPENAI_API_KEY"))
+        # Render (and similar proxies) often enforce ~30s request budgets; allow tuning per deploy.
+        self.timeout_sec = 60
+        raw_timeout = os.getenv("OPENAI_HTTP_TIMEOUT_SEC") or os.getenv("OPENAI_TIMEOUT_SEC")
+        try:
+            if raw_timeout and str(raw_timeout).strip():
+                self.timeout_sec = int(float(raw_timeout))
+            elif os.getenv("RENDER") or os.getenv("RENDER_SERVICE_ID"):
+                self.timeout_sec = 20
+        except (TypeError, ValueError):
+            self.timeout_sec = 60
 
     def is_configured(self) -> bool:
         return bool(self.api_key)
@@ -46,7 +56,7 @@ class LLMClient:
             },
             method="POST",
         )
-        with urllib.request.urlopen(req, timeout=60) as resp:
+        with urllib.request.urlopen(req, timeout=self.timeout_sec) as resp:
             body = json.loads(resp.read().decode("utf-8"))
         content = body["choices"][0]["message"]["content"]
         return json.loads(content)
@@ -71,6 +81,6 @@ class LLMClient:
             },
             method="POST",
         )
-        with urllib.request.urlopen(req, timeout=60) as resp:
+        with urllib.request.urlopen(req, timeout=self.timeout_sec) as resp:
             body = json.loads(resp.read().decode("utf-8"))
         return body["choices"][0]["message"]["content"]

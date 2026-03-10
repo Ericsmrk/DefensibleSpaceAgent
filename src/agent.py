@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 import logging
+import os
+import time
 from typing import Any, Dict, List, Optional
 
 from .baseline_executor import execute_baseline_workflow
@@ -672,6 +674,27 @@ def run_agent(
     When address/lat/lng are provided (e.g. from Google Places UI), planner and executor use them;
     geocoding is skipped when valid coordinates are provided.
     """
+    start_ts = time.time()
+    budget_env = os.getenv("ASSESS_BUDGET_SEC")
+    budget_sec: Optional[float] = None
+    try:
+        if budget_env and str(budget_env).strip():
+            budget_sec = float(budget_env)
+        elif os.getenv("RENDER") or os.getenv("RENDER_SERVICE_ID"):
+            # Render free tier commonly enforces ~30s request timeouts at the proxy.
+            budget_sec = 25.0
+    except (TypeError, ValueError):
+        budget_sec = None
+
+    def _remaining_sec() -> Optional[float]:
+        if budget_sec is None:
+            return None
+        return budget_sec - (time.time() - start_ts)
+
+    def _budget_low(min_remaining: float = 5.0) -> bool:
+        rem = _remaining_sec()
+        return rem is not None and rem <= float(min_remaining)
+
     client = LLMClient(model=model)
     # Normalize lat/lng
     provided_lat, provided_lng = None, None
@@ -826,11 +849,15 @@ def run_agent(
         }
 
     # 3. Validator LLM (Full tier and other non-baseline flows)
-    validator_llm = client.chat_json(
-        VALIDATOR_SYSTEM,
-        f"Plan valid={plan_ok}, reasons={plan_reasons}; args valid={args_ok}, reasons={args_reasons}",
-        fallback=_fallback_validation(),
-    )
+    if _budget_low():
+        validator_llm = _fallback_validation()
+        validator_llm["reasons"] = list(validator_llm.get("reasons") or []) + ["Skipped validator LLM due to request time budget."]
+    else:
+        validator_llm = client.chat_json(
+            VALIDATOR_SYSTEM,
+            f"Plan valid={plan_ok}, reasons={plan_reasons}; args valid={args_ok}, reasons={args_reasons}",
+            fallback=_fallback_validation(),
+        )
 
     if not (plan_ok and args_ok and validator_llm.get("passed", False)):
         return {
@@ -924,6 +951,20 @@ def run_agent(
             }
 
         elif tool == "compute_property_ndvi":
+            if os.getenv("DISABLE_NDVI") in ("1", "true", "TRUE", "yes", "YES"):
+                execution["mean_ndvi"] = None
+                execution["evidence"]["ndvi"] = {
+                    "source": "disabled",
+                    "reason": "NDVI disabled by DISABLE_NDVI env var.",
+                }
+                continue
+            if _budget_low(min_remaining=8.0):
+                execution["mean_ndvi"] = None
+                execution["evidence"]["ndvi"] = {
+                    "source": "skipped",
+                    "reason": "NDVI skipped due to request time budget.",
+                }
+                continue
             lat2, lon2 = execution.get("latitude"), execution.get("longitude")
             if lat2 is None or lon2 is None:
                 return {
@@ -979,7 +1020,12 @@ def run_agent(
                 },
             }
             fallback_rec = _fallback_recommendation(execution)
-            if not client.is_configured():
+            if _budget_low(min_remaining=8.0):
+                execution["calfire_recommendations"] = fallback_rec
+                execution.setdefault("evidence", {}).setdefault("warnings", []).append(
+                    "Skipped CAL FIRE recommendation LLM due to request time budget."
+                )
+            elif not client.is_configured():
                 execution["calfire_recommendations"] = fallback_rec
             else:
                 user_payload = json.dumps(rec_input, default=str, indent=2)
@@ -992,7 +1038,7 @@ def run_agent(
                 rec = _normalize_recommendation(first, fallback=fallback_rec)
                 # If the normalized result still looks like the untouched fallback and the raw was clearly not a dict,
                 # attempt a single repair call.
-                if not isinstance(first, dict):
+                if (not isinstance(first, dict)) and (not _budget_low(min_remaining=10.0)):
                     repair_prompt = json.dumps(
                         {
                             "input": rec_input,
@@ -1028,11 +1074,14 @@ def run_agent(
         if plan.get("request_type") == "baseline_free_tier"
         else "Full (Paid Tier) California wildfire assessment is ready."
     )
-    final_response = client.chat_text(
-        GENERATOR_SYSTEM,
-        f"Plan:\n{json.dumps(plan)}\n\nExecution evidence:\n{json.dumps(execution)}",
-        fallback=fallback_text,
-    )
+    if _budget_low():
+        final_response = fallback_text + " (Some narrative synthesis steps were skipped due to request time budget.)"
+    else:
+        final_response = client.chat_text(
+            GENERATOR_SYSTEM,
+            f"Plan:\n{json.dumps(plan)}\n\nExecution evidence:\n{json.dumps(execution)}",
+            fallback=fallback_text,
+        )
 
     return {
         "plan": plan,
