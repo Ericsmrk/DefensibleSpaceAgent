@@ -473,7 +473,7 @@ def _page(canvas, doc):
     canvas.saveState()
     canvas.setFont("Helvetica", 9)
     canvas.setFillColor(colors.HexColor("#64748b"))
-    canvas.drawString(doc.leftMargin, 0.55 * inch, "ClearSafe California – Defensible Space Agent (v1) · Eric Smrkovsky · Course report")
+    canvas.drawString(doc.leftMargin, 0.55 * inch, "ClearSafe California – Defensible Space Agent (v1) · Eric Smrkovsky · CSci 264 (Fresno State) · Course report")
     canvas.drawRightString(doc.pagesize[0] - doc.rightMargin, 0.55 * inch, f"Page {doc.page}")
     canvas.restoreState()
 

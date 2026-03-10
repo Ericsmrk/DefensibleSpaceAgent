@@ -14,7 +14,7 @@ size: 16:9
 **Structured planner → validators → tools → report** (Baseline vs Full tiers)
 
 Presenter: **Eric Smrkovsky**  
-Context: _[Course / Project / Org]_
+Context: **CSci 264 — Fresno State**
 
 ---
 

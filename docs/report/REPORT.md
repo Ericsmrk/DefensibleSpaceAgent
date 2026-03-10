@@ -1,6 +1,6 @@
 % ClearSafe California – Defensible Space Agent (Version One)
 % Eric Smrkovsky
-% Course Project Report (Agentic AI / Systems)
+% CSci 264 — Fresno State · Course Project Report
 % March 2026
 
 ## Abstract
