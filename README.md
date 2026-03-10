@@ -240,35 +240,75 @@ For a detailed catalog of gaps and planned improvements, see `docs/current_tools
 
 ### 7. Quickstart – local development (Version One)
 
+**Run-from-scratch checklist (in order):**
+
+1. **Prerequisites:** Python 3.10+, terminal in project root (folder containing `web_app.py`).
+2. **Venv:** `python -m venv .venv` → activate (see 7.2) → `pip install -r requirements.txt`.
+3. **Env file:** Copy `.env.example` to `.env`. Set `OPENAI_API_KEY` and `GOOGLE_MAPS_KEY` (no quotes). For NDVI in Full assessments, also set `EARTHENGINE_PROJECT=your-gcp-project-id` (create a [Google Cloud project](https://console.cloud.google.com/) and [enable Earth Engine API](https://console.cloud.google.com/apis/library/earthengine.googleapis.com) first).
+4. **Earth Engine (for NDVI):** Run authentication once (see 7.2.1).
+5. **Run app:** From project root with venv activated, run `python web_app.py`. Open `http://localhost:8000`.
+
+---
+
 #### 7.1 Prerequisites
 
 - Python 3.10+ (tested with modern CPython)
-- Recommended: virtual environment (`venv`, `conda`, etc.)
+- Terminal open in the **project root** (the folder that contains `web_app.py`, `requirements.txt`, and `.env.example`)
 
 #### 7.2 Install dependencies
 
+Create a virtual environment and install into it (avoids permission errors on Windows). From the project root:
+
 ```bash
 python -m venv .venv
-source .venv/bin/activate  # Windows PowerShell: .venv\Scripts\Activate.ps1
+```
+
+Activate it, then install:
+
+- **Linux/macOS:** `source .venv/bin/activate`
+- **Windows PowerShell:** `& .\.venv\Scripts\Activate.ps1`  
+  (If you get “cannot be loaded because running scripts is disabled”, run once: `Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser`.)
+- **Windows CMD:** `.\.venv\Scripts\activate.bat`
+
+Confirm the prompt shows `(.venv)`, then:
+
+```bash
 pip install -r requirements.txt
 ```
 
-Optional (for NDVI via Earth Engine):
+**Windows:** If you get `ERROR: Could not install packages due to an OSError: [WinError 2]` or `pyrsa-decrypt.exe.deleteme`, the venv is not active. Activate it again and re-run `pip install -r requirements.txt`.
 
-- Install `earthengine-api` and authenticate per Google Earth Engine instructions (not pinned in `requirements.txt` by default to keep the core dependency set minimal).
+#### 7.2.1 Earth Engine (for NDVI in Full assessment)
+
+The app uses Google Earth Engine for property-level NDVI in **Full** assessments. After installing dependencies, authenticate once (with the venv activated so the `earthengine` command is available):
+
+```bash
+earthengine authenticate
+```
+
+**Windows:** If the venv is activated, `earthengine` runs from `.venv\Scripts`. If you get “No module named earthengine” when using `python -m earthengine`, run the venv’s script directly:
+
+```powershell
+.\.venv\Scripts\earthengine.exe authenticate
+```
+
+A browser window will open; sign in with your Google account and allow access. Credentials are stored locally. If you skip this step, Full assessments will still run but NDVI will show as “Not available” with a short reason in the UI.
+
+If you see a permission or “no project” error for Earth Engine, set your Google Cloud project in `.env`: create a [Google Cloud project](https://console.cloud.google.com/), enable the [Earth Engine API](https://console.cloud.google.com/apis/library/earthengine.googleapis.com), then add `EARTHENGINE_PROJECT=your-project-id` to `.env` (see 7.3) and restart the app. Doing this before first run avoids permission errors.
 
 #### 7.3 Environment setup
 
-Copy the example environment file and add your own values:
+Copy the example env file. From the project root: **Linux/macOS** `cp .env.example .env` — **Windows** `copy .env.example .env`. Then edit `.env` and set:
 
-```bash
-cp .env.example .env
-```
+- `OPENAI_API_KEY` (required) – LLM steps; get a key from the OpenAI dashboard.
+- `GOOGLE_MAPS_KEY` (required for map/geocode) – Google Maps Geocoding and Places.
+- `EARTHENGINE_PROJECT` (for NDVI) – your Google Cloud project ID with Earth Engine API enabled.
 
-Set:
+**Important (avoids "401 Unauthorized"):**
 
-- `OPENAI_API_KEY` – enables all LLM‑based planner, validator, synthesis, and recommendation steps.
-- `GOOGLE_MAPS_KEY` – enables Google Maps Geocoding and map/Places integration in the UI.
+- **Do not wrap values in quotes** in `.env`. Use `OPENAI_API_KEY=sk-proj-...` not `OPENAI_API_KEY="sk-proj-..."`. Quotes become part of the value and the API will reject the key.
+- **Run the app from the project root** (the folder that contains `web_app.py` and `.env`). For example: `cd DefensibleSpaceAgent` then `python web_app.py`. If you run from another directory, the app may not find `.env` and will fall back to system environment variables.
+- If you have an old or invalid `OPENAI_API_KEY` in your system or user environment, the project’s `.env` is loaded with override so the key in this repo wins.
 
 Without these keys:
 
@@ -277,11 +317,13 @@ Without these keys:
 
 #### 7.4 Run the web UI
 
+From the project root with the venv activated:
+
 ```bash
 python web_app.py
 ```
 
-Then open `http://localhost:8000` in your browser.
+Then open **http://localhost:8000** in your browser.
 
 - Enter a (California) address.
 - Choose **Baseline** (free) or **Full** (paid) assessment type.
@@ -303,6 +345,13 @@ pytest
 ```
 
 See `docs/testing_and_validation_v1.md` for a detailed overview of testing and validation in Version One.
+
+#### 7.7 Troubleshooting (quickstart)
+
+- **401 Unauthorized:** Ensure `.env` has no quotes around `OPENAI_API_KEY` (e.g. `OPENAI_API_KEY=sk-proj-...` not `"sk-proj-..."`). Restart the app after editing `.env`.
+- **Run from project root:** Always `cd` to the folder that contains `web_app.py` and `.env` before running `python web_app.py`.
+- **Windows venv:** Use `& .\.venv\Scripts\Activate.ps1` to activate; confirm `(.venv)` in the prompt before `pip install`. If install fails with WinError 2, close other terminals and try again with venv active.
+- **Earth Engine / NDVI:** Run `.\.venv\Scripts\earthengine.exe authenticate` (Windows) or `earthengine authenticate` (Linux/macOS with venv active). Then set `EARTHENGINE_PROJECT=your-gcp-project-id` in `.env` (create a Google Cloud project and enable Earth Engine API first). Restart the app.
 
 ### 8. Documentation index (Version One)
 

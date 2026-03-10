@@ -20,8 +20,9 @@ Alternative: use the included `render.yaml` for blueprint deploy.
 In Render dashboard, add:
 - `OPENAI_API_KEY` (optional; enables live LLM calls)
 - `GOOGLE_MAPS_KEY` (optional; enables live geocoding)
+- `EARTHENGINE_PROJECT` (optional; for NDVI in Full assessments — your GCP project ID with Earth Engine API enabled)
 
-Without them, app still runs using deterministic fallback logic.
+Without them, app still runs using deterministic fallback logic; NDVI will be unavailable without Earth Engine auth and `EARTHENGINE_PROJECT`.
 
 
 ## Key management (important)

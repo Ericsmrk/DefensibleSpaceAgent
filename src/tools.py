@@ -2,15 +2,21 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import os
 import urllib.parse
 import urllib.request
 from typing import Optional, Tuple
 
+logger = logging.getLogger(__name__)
+
 try:
     import ee  # type: ignore[import]
 except Exception:  # pragma: no cover - optional dependency
     ee = None
+
+# Last Earth Engine init error, for startup message.
+_last_ee_error: Optional[str] = None
 
 
 def geocode_google(address: str) -> Tuple[Optional[float], Optional[float], dict]:
@@ -58,6 +64,12 @@ def geocode_google(address: str) -> Tuple[Optional[float], Optional[float], dict
     return float(loc["lat"]), float(loc["lng"]), meta
 
 
+def _ee_credentials_path() -> str:
+    """Path to the Earth Engine credentials file (same as earthengine authenticate)."""
+    home = os.environ.get("USERPROFILE") or os.environ.get("HOME") or os.path.expanduser("~")
+    return os.path.join(home, ".config", "earthengine", "credentials")
+
+
 def _ensure_ee_initialized() -> bool:
     """
     Best-effort initialization for Google Earth Engine.
@@ -66,22 +78,71 @@ def _ensure_ee_initialized() -> bool:
     configured in the environment where the app is running. If initialization
     fails, callers should treat NDVI as unavailable.
     """
+    global _last_ee_error
     if ee is None:
         return False
     try:
-        # Fast no-op call to check whether EE is already initialized.
         ee.Number(1).getInfo()
         return True
     except Exception:
         pass
+    _last_ee_error = None
     try:
-        # Attempt default initialization; for production use you may want to
-        # wire a specific project or service account here.
         ee.Initialize()
         ee.Number(1).getInfo()
         return True
-    except Exception:
+    except Exception as e:
+        _last_ee_error = str(e)
+        pass
+    # Fallback: load credentials from explicit path (fixes Windows/IDE when
+    # expanduser('~') doesn't match where earthengine authenticate wrote the file).
+    cred_path = _ee_credentials_path()
+    if not os.path.isfile(cred_path):
+        _last_ee_error = f"credentials not found at {cred_path}"
         return False
+    try:
+        from google.oauth2 import credentials as credentials_lib
+
+        with open(cred_path, encoding="utf-8") as f:
+            stored = json.load(f)
+        refresh_token = stored.get("refresh_token")
+        if not refresh_token:
+            _last_ee_error = "no refresh_token in credentials file; run earthengine authenticate again"
+            return False
+        token_uri = "https://oauth2.googleapis.com/token"
+        args = {
+            "token": None,
+            "refresh_token": refresh_token,
+            "token_uri": token_uri,
+            "client_id": stored.get("client_id", "517222506229-vsmmajv00ul0bs7p89v5m89qs8eb9359.apps.googleusercontent.com"),
+            "client_secret": stored.get("client_secret", "RUP0RZ6e0pPhDzsqIJ7KlNd1"),
+            "scopes": stored.get("scopes", ["https://www.googleapis.com/auth/earthengine", "https://www.googleapis.com/auth/cloud-platform", "https://www.googleapis.com/auth/drive", "https://www.googleapis.com/auth/devstorage.full_control"]),
+        }
+        if stored.get("project"):
+            args["quota_project_id"] = stored["project"]
+        creds = credentials_lib.Credentials(**args)
+        # Project: from credentials file, or from env EARTHENGINE_PROJECT. Do not use "earthengine-legacy" (no user access).
+        project = stored.get("project") or os.getenv("EARTHENGINE_PROJECT") or None
+        if project:
+            ee.Initialize(credentials=creds, project=project)
+        else:
+            ee.Initialize(credentials=creds)
+        ee.Number(1).getInfo()
+        return True
+    except Exception as e:
+        _last_ee_error = str(e)
+        logger.exception("Earth Engine init failed: %s", e)
+        return False
+
+
+def earth_engine_status() -> str:
+    """Return a short status message for startup: 'ready' or why NDVI is unavailable."""
+    if ee is None:
+        return "earthengine-api not installed; run: pip install -r requirements.txt"
+    if _ensure_ee_initialized():
+        return "ready for NDVI"
+    hint = _last_ee_error or "run: .venv\\Scripts\\earthengine.exe authenticate (then restart)"
+    return f"not authenticated; {hint}"
 
 
 def compute_mean_ndvi(

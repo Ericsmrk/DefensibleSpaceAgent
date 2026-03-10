@@ -3,8 +3,14 @@ from __future__ import annotations
 import json
 import logging
 import os
+from pathlib import Path
+
 from dotenv import load_dotenv
-load_dotenv()
+
+# Always load .env from the same directory as this file (project root).
+# override=True so project .env wins over any system OPENAI_API_KEY.
+_env_path = Path(__file__).resolve().parent / ".env"
+load_dotenv(_env_path, override=True)
 
 from flask import Flask, jsonify, render_template_string, request, Response
 
@@ -12,9 +18,19 @@ logger = logging.getLogger(__name__)
 
 from src.agent import run_agent, run_planner_only, normalize_plan_for_provided_coordinates
 from src.llm_client import LLMClient
-from src.tools import geocode_google
+from src.tools import geocode_google, earth_engine_status
 
 app = Flask(__name__)
+
+# On startup, show whether OpenAI key and Earth Engine are ready.
+_key = os.getenv("OPENAI_API_KEY") or ""
+if _key:
+    _hint = f"{_key[:10]}...{_key[-4:]}" if len(_key) > 14 else "(set)"
+    print(f"[ClearSafe] OPENAI_API_KEY loaded from {_env_path}: {_hint}")
+else:
+    print(f"[ClearSafe] OPENAI_API_KEY not set — check {_env_path}")
+_ee_status = earth_engine_status()
+print(f"[ClearSafe] Earth Engine: {_ee_status}")
 
 # Prompt sent to the OpenAI LLM during the planner step (Run planner button).
 # Use {address} in the string to inject the selected property address.
@@ -650,7 +666,7 @@ INDEX_HTML = """
       var ndviDisplay = ndviVal != null ? ndviVal : 'Not available';
       var ndviCaption = ndviVal != null
         ? 'Higher values usually mean denser, greener vegetation.'
-        : 'NDVI is not available in this deployment or for this location.';
+        : ((ex.evidence && ex.evidence.ndvi && ex.evidence.ndvi.reason) ? escapeHtml(ex.evidence.ndvi.reason) : 'NDVI is not available in this deployment or for this location.');
 
       var fuel = ex.fuel_class || 'No Data';
       var fuelCaption = fuel === 'No Data'
@@ -991,7 +1007,7 @@ INDEX_HTML = """
       var s = document.createElement('script');
       s.async = true;
       s.defer = true;
-      s.src = 'https://maps.googleapis.com/maps/api/js?key=' + encodeURIComponent(key) + '&libraries=places&callback=initMap';
+      s.src = 'https://maps.googleapis.com/maps/api/js?key=' + encodeURIComponent(key) + '&libraries=places&callback=initMap&loading=async';
       document.head.appendChild(s);
     })();
   </script>

@@ -6,10 +6,20 @@ import urllib.request
 from typing import Any, Dict, List
 
 
+def _normalize_api_key(value: str | None) -> str | None:
+    """Strip surrounding quotes and whitespace so .env quotes never break auth."""
+    if value is None:
+        return None
+    s = (value or "").strip()
+    if len(s) >= 2 and (s[0], s[-1]) in (('"', '"'), ("'", "'")):
+        s = s[1:-1].strip()
+    return s if s else None
+
+
 class LLMClient:
     def __init__(self, model: str = "gpt-4o-mini"):
         self.model = model
-        self.api_key = os.getenv("OPENAI_API_KEY")
+        self.api_key = _normalize_api_key(os.getenv("OPENAI_API_KEY"))
 
     def is_configured(self) -> bool:
         return bool(self.api_key)

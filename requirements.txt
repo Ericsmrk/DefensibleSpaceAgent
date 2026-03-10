@@ -1,3 +1,4 @@
 flask>=3.0.0,<4
 python-dotenv>=1.0.0
 pytest>=8,<10
+earthengine-api>=1.4.0

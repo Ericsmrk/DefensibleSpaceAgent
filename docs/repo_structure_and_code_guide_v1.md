@@ -31,8 +31,8 @@ At the repo root:
   - adapts the UI contract to the agent and tool layers in `src/`.
 - `index.html` – Standalone static page closely mirroring the inline UI in `web_app.py`; useful for GitHub Pages and static hosting.
 - `demo.py` – Small CLI runner that calls `run_agent` on several example strings and prints the full structured JSON outputs.
-- `requirements.txt` – Core Python dependencies (Flask, python‑dotenv, pytest).
-- `.env.example` – Template for local environment variables.
+- `requirements.txt` – Core Python dependencies (Flask, python‑dotenv, pytest, earthengine‑api).
+- `.env.example` – Template for local env: `OPENAI_API_KEY`, `GOOGLE_MAPS_KEY`, optional `EARTHENGINE_PROJECT` (copy to `.env`).
 - `render.yaml`, `Procfile`, `runtime.txt` – Deployment descriptors (e.g., Render / Heroku‑style).
 - `tests/` – Pytest suite for the agent, web app, validators, and tiered planner scenarios.
 - `src/` – All agent logic, tools, validators, prompts, and schemas.
