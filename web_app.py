@@ -645,11 +645,17 @@ INDEX_HTML = """
         body: JSON.stringify(payload)
       });
 
+      var data;
+      try {
+        data = await r.json();
+      } catch (_) {
+        data = {};
+      }
       if (!r.ok) {
-        out.innerHTML = '<p>Request failed.</p>';
+        var errMsg = (data && data.error) ? escapeHtml(data.error) : ('Request failed (' + r.status + ').');
+        out.innerHTML = '<p>Request failed.</p><p class="muted">' + errMsg + '</p>';
         return;
       }
-      var data = await r.json();
       var ex = data.execution || {};
 
       var tierRaw = ex.tier || (data.plan && data.plan.request_type) || '';
@@ -1139,16 +1145,20 @@ def assess():
         lng if lng is not None else "None",
     )
     pref = _assessment_preference_from_payload(payload)
-    result = run_agent(
-        user_request,
-        address=address,
-        lat=lat,
-        lng=lng,
-        assessment_preference=pref,
-        uploaded_photos_present=bool(uploaded_photos_present) if uploaded_photos_present is not None else None,
-        uploaded_photos_count=int(uploaded_photos_count) if str(uploaded_photos_count or "").strip().isdigit() else None,
-    )
-    return jsonify(result)
+    try:
+        result = run_agent(
+            user_request,
+            address=address,
+            lat=lat,
+            lng=lng,
+            assessment_preference=pref,
+            uploaded_photos_present=bool(uploaded_photos_present) if uploaded_photos_present is not None else None,
+            uploaded_photos_count=int(uploaded_photos_count) if str(uploaded_photos_count or "").strip().isdigit() else None,
+        )
+        return jsonify(result)
+    except Exception as e:
+        logger.exception("assess failed: %s", e)
+        return jsonify({"error": str(e)}), 500
 
 
 @app.get("/healthz")
