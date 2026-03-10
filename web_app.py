@@ -1158,7 +1158,11 @@ def assess():
         return jsonify(result)
     except Exception as e:
         logger.exception("assess failed: %s", e)
-        return jsonify({"error": str(e)}), 500
+        err_type = type(e).__name__
+        err_msg = str(e).strip()
+        # Some exceptions stringify poorly; include the type for readability.
+        combined = f"{err_type}: {err_msg}" if err_msg else err_type
+        return jsonify({"error": combined, "error_type": err_type}), 500
 
 
 @app.get("/healthz")
